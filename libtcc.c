@@ -1247,7 +1247,8 @@ static int tcc_compile(TCCState *s1)
         section_sym = put_elf_sym(symtab_section, 0, 0, 
                                   ELFW(ST_INFO)(STB_LOCAL, STT_SECTION), 0, 
                                   text_section->sh_num, NULL);
-        getcwd(buf, sizeof(buf));
+        if (getcwd(buf, sizeof(buf)) == NULL)
+            error("getcwd: %s",strerror(errno));
 #ifdef _WIN32
         normalize_slashes(buf);
 #endif
