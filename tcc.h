@@ -789,6 +789,101 @@ extern long double strtold (const char *__nptr, char **__endptr);
 #define PATHCMP strcmp
 #endif
 
+/* impose symbol hygiene
+
+  All global symbols defined in libtcc.a should have a prefix of either
+  tcc_ or _tcc_ , to avoid user namespace pollution and conflicts.
+
+  nm -g -P libtcc.a |perl -e '$x=<>;while(<>){my($symbol,$type)=/(\S+) (\S) / or die;next if $type eq "U"||$symbol=~/^tcc_/;print "#define $symbol _tcc_$symbol\n"}' > insert_below
+*/
+#define bn_lshift _tcc_bn_lshift
+#define bn_zero _tcc_bn_zero
+#define dynarray_add _tcc_dynarray_add
+#define dynarray_reset _tcc_dynarray_reset
+#define elf_output_file _tcc_elf_output_file
+#define error _tcc_error
+#define error1 _tcc_error1
+#define error_noabort _tcc_error_noabort
+#define expect _tcc_expect
+#define find_section _tcc_find_section
+#define force_charshort_cast _tcc_force_charshort_cast
+#define g _tcc_g
+#define gaddrof _tcc_gaddrof
+#define gen_cvt_ftof _tcc_gen_cvt_ftof
+#define gen_cvt_ftoi _tcc_gen_cvt_ftoi
+#define gen_cvt_ftoi1 _tcc_gen_cvt_ftoi1
+#define gen_cvt_itof _tcc_gen_cvt_itof
+#define gen_cvt_itof1 _tcc_gen_cvt_itof1
+#define gen_le32 _tcc_gen_le32
+#define gen_le64 _tcc_gen_le64
+#define gen_op _tcc_gen_op
+#define gen_opf _tcc_gen_opf
+#define gen_opi _tcc_gen_opi
+#define gen_opic _tcc_gen_opic
+#define gen_opif _tcc_gen_opif
+#define gen_opl _tcc_gen_opl
+#define get_reg _tcc_get_reg
+#define get_reg_ex _tcc_get_reg_ex
+#define get_tok_str _tcc_get_tok_str
+#define gfunc_call _tcc_gfunc_call
+#define gfunc_epilog _tcc_gfunc_epilog
+#define gfunc_prolog _tcc_gfunc_prolog
+#define ggoto _tcc_ggoto
+#define gjmp _tcc_gjmp
+#define gjmp_addr _tcc_gjmp_addr
+#define gsym _tcc_gsym
+#define gsym_addr _tcc_gsym_addr
+#define gtst _tcc_gtst
+#define gv _tcc_gv
+#define gv2 _tcc_gv2
+#define gv_dup _tcc_gv_dup
+#define ieee_finite _tcc_ieee_finite
+#define inc _tcc_inc
+#define lbuild _tcc_lbuild
+#define lexpand _tcc_lexpand
+#define load _tcc_load
+#define move_reg _tcc_move_reg
+#define new_section _tcc_new_section
+#define num_callers _tcc_num_callers
+#define o _tcc_o
+#define parse_number _tcc_parse_number
+#define preprocess_new _tcc_preprocess_new
+#define preprocess_skip _tcc_preprocess_skip
+#define pstrcat _tcc_pstrcat
+#define pstrcpy _tcc_pstrcpy
+#define put_func_debug _tcc_put_func_debug
+#define rc_fret _tcc_rc_fret
+#define reg_classes _tcc_reg_classes
+#define reg_fret _tcc_reg_fret
+#define resolve_sym _tcc_resolve_sym
+#define restore_parse_state _tcc_restore_parse_state
+#define rt_bound_error_msg _tcc_rt_bound_error_msg
+#define rt_error _tcc_rt_error
+#define rt_prog_main _tcc_rt_prog_main
+#define save_parse_state _tcc_save_parse_state
+#define save_reg _tcc_save_reg
+#define save_regs _tcc_save_regs
+#define set_pages_executable _tcc_set_pages_executable
+#define skip _tcc_skip
+#define store _tcc_store
+#define swap _tcc_swap
+#define total_bytes _tcc_total_bytes
+#define total_lines _tcc_total_lines
+#define type_to_str _tcc_type_to_str
+#define vdup _tcc_vdup
+#define vpop _tcc_vpop
+#define vpushi _tcc_vpushi
+#define vpushll _tcc_vpushll
+#define vpushv _tcc_vpushv
+#define vrotb _tcc_vrotb
+#define vrott _tcc_vrott
+#define vset _tcc_vset
+#define vsetc _tcc_vsetc
+#define vseti _tcc_vseti
+#define vstore _tcc_vstore
+#define vswap _tcc_vswap
+#define warning _tcc_warning
+
 void error(const char *fmt, ...);
 void error_noabort(const char *fmt, ...);
 void warning(const char *fmt, ...);
