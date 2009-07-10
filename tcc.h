@@ -794,7 +794,7 @@ extern long double strtold (const char *__nptr, char **__endptr);
   All global symbols defined in libtcc.a should have a prefix of either
   tcc_ or _tcc_ , to avoid user namespace pollution and conflicts.
 
-  nm -g -P libtcc.a |perl -e '$x=<>;while(<>){my($symbol,$type)=/(\S+) (\S) / or die;next if $type eq "U"||$symbol=~/^tcc_/;print "#define $symbol _tcc_$symbol\n"}' > insert_below
+  nm -g -P libtcc.a |perl -e '$x=<>;while(<>){my($symbol,$type)=/(\S+) (\S) / or die;next if $type eq "U"||$symbol=~/^_?tcc_/;print "#define $symbol _tcc_$symbol\n"}' > insert_below
 */
 #define bn_lshift _tcc_bn_lshift
 #define bn_zero _tcc_bn_zero
