@@ -203,7 +203,7 @@ INSTALL=install
 ifndef CONFIG_WIN32
 install: $(PROGS) $(LIBTCC1) $(BCHECK_O) libtcc.a tcc.1 tcc-doc.html
 	mkdir -p "$(bindir)"
-	$(INSTALL) -s -m755 $(PROGS) "$(bindir)"
+	$(INSTALL) -m755 $(PROGS) "$(bindir)"
 	mkdir -p "$(mandir)/man1"
 	$(INSTALL) tcc.1 "$(mandir)/man1"
 	mkdir -p "$(tccdir)"
@@ -231,19 +231,23 @@ uninstall:
 
 else
 install: $(PROGS) $(LIBTCC1) libtcc.a tcc-doc.html
-	mkdir -p "$(tccdir)"
+	mkdir -p "$(bindir)"
 	mkdir -p "$(tccdir)/lib"
 	mkdir -p "$(tccdir)/include"
 	mkdir -p "$(tccdir)/examples"
 	mkdir -p "$(tccdir)/doc"
 	mkdir -p "$(tccdir)/libtcc"
-	$(INSTALL) -s -m755 $(PROGS) "$(tccdir)"
+	$(INSTALL) -m755 $(PROGS) "$(bindir)"
 	$(INSTALL) -m644 $(LIBTCC1) win32/lib/*.def "$(tccdir)/lib"
 	cp -r win32/include/. "$(tccdir)/include"
 	cp -r win32/examples/. "$(tccdir)/examples"
 	$(INSTALL) -m644 $(addprefix include/,$(TCC_INCLUDES)) "$(tccdir)/include"
 	$(INSTALL) -m644 tcc-doc.html win32/tcc-win32.txt "$(tccdir)/doc"
 	$(INSTALL) -m644 libtcc.a libtcc.h "$(tccdir)/libtcc"
+endif
+install-strip: install
+ifneq ($(strip $(STRIP)),)
+	$(STRIP) $(addprefix $(bindir), $(PROGS))
 endif
 
 # documentation and man page
