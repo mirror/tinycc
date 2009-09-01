@@ -57,11 +57,6 @@ NATIVE_TARGET+=-DTCC_TARGET_PE
 BCHECK_O=
 endif
 
-ifneq ($(wildcard /lib/ld-uClibc.so.0),)
-NATIVE_TARGET+=-DTCC_UCLIBC
-BCHECK_O=
-endif
-
 ifdef CONFIG_USE_LIBGCC
 LIBTCC1=
 endif

@@ -1301,17 +1301,21 @@ static void tcc_add_linker_symbols(TCCState *s1)
 }
 
 /* name of ELF interpreter */
+static const char elf_interp[] =
 #if defined __FreeBSD__
-static const char elf_interp[] = "/libexec/ld-elf.so.1";
+        "/libexec/ld-elf.so.1";
 #elif defined TCC_ARM_EABI
-static const char elf_interp[] = "/lib/ld-linux.so.3";
+	"/lib/ld-linux.so.3"
 #elif defined(TCC_TARGET_X86_64)
-static const char elf_interp[] = "/lib/ld-linux-x86-64.so.2";
-#elif defined(TCC_UCLIBC)
-static const char elf_interp[] = "/lib/ld-uClibc.so.0";
+	"/lib/ld-linux-x86-64.so.2"
 #else
-static const char elf_interp[] = "/lib/ld-linux.so.2";
+	"/lib/ld-linux.so.2"
 #endif
+#if 1
+	"\0/lib/ld-uClibc.so.0"
+#endif
+	"\0"
+;
 
 static void tcc_output_binary(TCCState *s1, FILE *f,
                               const int *section_order)
@@ -1405,16 +1409,19 @@ int elf_output_file(TCCState *s1, const char *filename)
             ElfW(Sym) *esym, *sym_end;
 
             if (file_type == TCC_OUTPUT_EXE) {
+                /* add interpreter section only if executable */
+                const char *ld = elf_interp;
+		const char *ld_env = getenv("LD_SO");
                 char *ptr;
 		/* allow override the dynamic loader */
-		const char *elfint = getenv("LD_SO");
-		if (elfint == NULL)
-		    elfint = elf_interp;
-                /* add interpreter section only if executable */
+                if (s1->use_ulibc_interp == 1)
+                    ld += strlen(ld) + 1;
+                else if (ld_env)
+                    ld = ld_env;
                 interp = new_section(s1, ".interp", SHT_PROGBITS, SHF_ALLOC);
                 interp->sh_addralign = 1;
-                ptr = section_ptr_add(interp, 1+strlen(elfint));
-                strcpy(ptr, elfint);
+                ptr = section_ptr_add(interp, 1+strlen(ld));
+                strcpy(ptr, ld);
             }
 
             /* add dynamic symbol table */

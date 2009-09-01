@@ -332,8 +332,8 @@ Display N callers in stack traces. This is useful with @option{-g} or
 
 @end table
 
-Note: GCC options @option{-Ox}, @option{-fx} and @option{-mx} are
-ignored.
+Note: GCC options @option{-Ox}, @option{-fx} and @option{-mx} are ignored
+except @option{-muclibc} and @option{-mglibc}.
 @c man end
 
 @ignore

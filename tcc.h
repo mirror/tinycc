@@ -108,7 +108,7 @@
 #define TCC_TARGET_I386
 #endif
 
-#if !defined(_WIN32) && !defined(TCC_UCLIBC) && !defined(TCC_TARGET_ARM) && \
+#if !defined(_WIN32) && !defined(TCC_TARGET_ARM) && \
     !defined(TCC_TARGET_C67) && !defined(TCC_TARGET_X86_64)
 #define CONFIG_TCC_BCHECK /* enable bound checking code */
 #endif
@@ -531,6 +531,7 @@ struct TCCState {
     unsigned int runtime_plt_and_got_offset;
 #endif
 #endif
+    unsigned int use_ulibc_interp; /* elf-interpreter to use */
 };
 
 /* The current value can be: */
@@ -762,8 +763,7 @@ enum tcc_token {
   #define strtof (float)strtod
   #define strtoll (long long)strtol
 #endif
-#elif defined(TCC_UCLIBC) || defined(__FreeBSD__) || defined(__DragonFly__) \
-    || defined(__OpenBSD__)
+#elif defined(__FreeBSD__) || defined(__DragonFly__) || defined(__OpenBSD__)
 /* currently incorrect */
 long double strtold(const char *nptr, char **endptr)
 {

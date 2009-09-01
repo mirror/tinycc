@@ -452,6 +452,9 @@ int parse_args(TCCState *s, int argc, char **argv)
                 break;
             case TCC_OPTION_x:
                 break;
+            case TCC_OPTION_m:
+		s->use_ulibc_interp = !strcmp("uclibc", optarg);
+                break;
             default:
                 if (s->warn_unsupported) {
                 unsupported_option:
