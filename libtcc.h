@@ -61,17 +61,23 @@ LIBTCCAPI int tcc_compile_string(TCCState *s, const char *buf);
 /* linking commands */
 
 /* set output type. MUST BE CALLED before any compilation */
-#define TCC_OUTPUT_MEMORY   0 /* output will be ran in memory (no
+enum output_type_e {
+    TCC_OUTPUT_MEMORY = 0, /* output will be ran in memory (no
                                  output file) (default) */
-#define TCC_OUTPUT_EXE      1 /* executable file */
-#define TCC_OUTPUT_DLL      2 /* dynamic library */
-#define TCC_OUTPUT_OBJ      3 /* object file */
-#define TCC_OUTPUT_PREPROCESS 4 /* preprocessed file (used internally) */
-LIBTCCAPI int tcc_set_output_type(TCCState *s, int output_type);
+    TCC_OUTPUT_EXE    = 1, /* executable file */
+    TCC_OUTPUT_DLL    = 2, /* dynamic library */
+    TCC_OUTPUT_OBJ    = 3, /* object file */
+    TCC_OUTPUT_PREPROCESS  = 4 /* preprocessed file (used internally) */
+};
+typedef enum output_type_e output_t;
+LIBTCCAPI int tcc_set_output_type(TCCState *s, output_t output_type);
 
-#define TCC_OUTPUT_FORMAT_ELF    0 /* default output format: ELF */
-#define TCC_OUTPUT_FORMAT_BINARY 1 /* binary image output */
-#define TCC_OUTPUT_FORMAT_COFF   2 /* COFF */
+enum output_format_e {
+    TCC_OUTPUT_FORMAT_ELF    = 0, /* default output format: ELF */
+    TCC_OUTPUT_FORMAT_BINARY = 1, /* binary image output */
+    TCC_OUTPUT_FORMAT_COFF   = 2 /* COFF */
+};
+typedef enum output_format_e output_format_t;
 
 /* equivalent to -Lpath option */
 LIBTCCAPI int tcc_add_library_path(TCCState *s, const char *pathname);

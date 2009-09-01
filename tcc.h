@@ -392,8 +392,8 @@ typedef struct ASMOperand {
 #endif
 
 struct TCCState {
-    int output_type;
- 
+    output_t output_type;
+
     BufferedFile **include_stack_ptr;
     int *ifdef_stack_ptr;
 
@@ -454,7 +454,7 @@ struct TCCState {
     int has_text_addr;
     
     /* output format, see TCC_OUTPUT_FORMAT_xxx */
-    int output_format;
+    output_format_t output_format;
 
     /* C language options */
     int char_is_unsigned;

@@ -2212,7 +2212,7 @@ int tcc_add_symbol(TCCState *s, const char *name, void *val)
     return 0;
 }
 
-int tcc_set_output_type(TCCState *s, int output_type)
+int tcc_set_output_type(TCCState *s, output_t output_type)
 {
     char buf[1024];
 

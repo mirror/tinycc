@@ -69,7 +69,7 @@ static char **files;
 static int nb_files, nb_libraries;
 static int multiple_files;
 static int print_search_dirs;
-static int output_type;
+static output_t output_type;
 static int reloc_output;
 static const char *outfile;
 static int do_bench = 0;
