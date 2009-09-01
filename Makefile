@@ -8,6 +8,11 @@ include $(TOP)/config.mak
 CFLAGS+=-g -Wall
 CFLAGS_P=$(CFLAGS) -pg -static -DCONFIG_TCC_STATIC
 LIBS_P=
+LIBS=
+
+ifeq ($(TCC_USE_LIBTCC),yes)
+LIBS+= -L$(TOP) -ltcc
+endif
 
 ifneq ($(GCC_MAJOR),2)
 CFLAGS+=-fno-strict-aliasing
@@ -26,7 +31,7 @@ endif
 endif
 
 ifndef CONFIG_WIN32
-LIBS=-lm
+LIBS+=-lm
 ifndef CONFIG_NOLDL
 LIBS+=-ldl
 endif
@@ -64,6 +69,10 @@ endif
 
 ifdef CONFIG_USE_LIBGCC
 LIBTCC1=
+endif
+
+ifeq ($(TCC_USE_LIBTCC),yes)
+LIBTCC=libtcc.so
 endif
 
 ifeq ($(TOP),.)
@@ -116,7 +125,7 @@ endif
 all: $(PROGS) $(LIBTCC1) $(BCHECK_O) libtcc.a tcc-doc.html tcc.1 libtcc_test$(EXESUF)
 
 # Host Tiny C Compiler
-tcc$(EXESUF): $(NATIVE_FILES)
+tcc$(EXESUF): $(NATIVE_FILES) $(LIBTCC)
 	$(CC) -o $@ $< $(NATIVE_TARGET) $(CFLAGS) $(LIBS)
 
 # Cross Tiny C Compilers
@@ -154,11 +163,14 @@ arm-tcc-vfp-eabi$(EXESUF): $(ARM_FILES)
 libtcc.o: $(NATIVE_FILES)
 	$(CC) -o $@ -c libtcc.c $(NATIVE_TARGET) $(CFLAGS)
 
+libtcc.so: $(NATIVE_FILES)
+	$(CC) -shared -Wl,-soname=$@ -o $@ libtcc.c $(NATIVE_TARGET) $(CFLAGS)
+
 libtcc.a: libtcc.o
 	$(AR) rcs $@ $^
 
-libtcc_test$(EXESUF): tests/libtcc_test.c libtcc.a
-	$(CC) -o $@ $^ -I. $(CFLAGS) $(LIBS)
+libtcc_test$(EXESUF): tests/libtcc_test.c $(LIBTCC)
+	$(CC) -o $@ $< -I. $(CFLAGS) $(LIBS)
 
 libtest: libtcc_test$(EXESUF) $(LIBTCC1)
 	./libtcc_test$(EXESUF) lib_path=.
@@ -219,6 +231,9 @@ endif
 	$(INSTALL) -m644 tcc-doc.html "$(docdir)"
 	mkdir -p "$(libdir)"
 	$(INSTALL) -m644 libtcc.a "$(libdir)"
+ifeq ($(TCC_USE_LIBTCC),yes)
+	$(INSTALL) -m755 $(LIBTCC) "$(libdir)"
+endif
 	mkdir -p "$(includedir)"
 	$(INSTALL) -m644 libtcc.h "$(includedir)"
 
@@ -277,7 +292,7 @@ config.mak:
 # clean
 clean: local_clean
 local_clean:
-	rm -vf $(PROGS) tcc_p$(EXESUF) tcc.pod *~ *.o *.a *.out libtcc_test$(EXESUF)
+	rm -vf $(PROGS) tcc_p$(EXESUF) tcc.pod *~ *.o *.a *.out libtcc_test$(EXESUF) $(LIBTCC)
 
 distclean: clean
 	rm -vf config.h config.mak config.texi tcc.1

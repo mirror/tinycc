@@ -20,6 +20,7 @@ TMPH="${TMPDIR1}/tcc-conf-${RANDOM}-$$-${RANDOM}.h"
 # default parameters
 build_cross="no"
 use_libgcc="no"
+use_libtcc="no"
 prefix=""
 execprefix=""
 bindir=""
@@ -132,6 +133,8 @@ for opt do
   ;;
   --help|-h) show_help="yes"
   ;;
+  --enable-shared) use_libtcc="yes"
+  ;;
   esac
 done
 
@@ -229,6 +232,7 @@ echo "  --cross-prefix=PREFIX    use PREFIX for compile tools [$cross_prefix]"
 echo "  --sysroot=PREFIX         prepend PREFIX to library/include paths []"
 echo "  --cc=CC                  use C compiler CC [$cc]"
 echo "  --with-libgcc            use /lib/libgcc_s.so.1 instead of libtcc1.a"
+echo "  --enable-shared          link against libtcc.so instead of libtcc1.a"
 echo ""
 #echo "NOTE: The object files are build at the place where configure is launched"
 exit 1
@@ -357,6 +361,11 @@ if test "$use_libgcc" = "yes" ; then
   echo "#define CONFIG_USE_LIBGCC" >> $TMPH
   echo "CONFIG_USE_LIBGCC=yes" >> config.mak
 fi
+if test "$use_libtcc" = "yes" ; then
+  echo "#define TCC_USE_LIBTCC" >> $TMPH
+fi
+echo "TCC_USE_LIBTCC=$use_libtcc" >> config.mak
+
 version=`head $source_path/VERSION`
 echo "VERSION=$version" >>config.mak
 echo "#define TCC_VERSION \"$version\"" >> $TMPH
