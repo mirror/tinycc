@@ -1207,7 +1207,7 @@ static void tcc_add_runtime(TCCState *s1)
                     ELFW(ST_INFO)(STB_GLOBAL, STT_NOTYPE), 0,
                     bounds_section->sh_num, "__bounds_start");
         /* add bound check code */
-        snprintf(buf, sizeof(buf), "%s/%s", s1->tcc_lib_path, "bcheck.o");
+        snprintf(buf, sizeof(buf), "%s/%s", s1->tcc_lib_path, "bcheck.a");
         tcc_add_file_internal(s1, buf, AFF_WHOLE_ARCHIVE | AFF_PRINT_ERROR);
 #ifdef TCC_TARGET_I386
         if (s1->output_type != TCC_OUTPUT_MEMORY) {

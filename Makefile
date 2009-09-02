@@ -8,6 +8,7 @@ include $(TOP)/config.mak
 CFLAGS+=-g -Wall
 CFLAGS_P=$(CFLAGS) -pg -static -DCONFIG_TCC_STATIC
 LIBS_P=
+CFLAGS_PIC ?= -fPIC
 
 ifneq ($(GCC_MAJOR),2)
 CFLAGS+=-fno-strict-aliasing
@@ -32,18 +33,22 @@ LIBS+=-ldl
 endif
 endif
 
+BCHECK=
+BCHECK_O=
+ALLOCA_O=
+
 ifeq ($(ARCH),i386)
 NATIVE_TARGET=-DTCC_TARGET_I386
 LIBTCC1=libtcc1.a
-BCHECK_O=bcheck.o
-ALLOCA_O=alloca86.o alloca86-bt.o
-else
+ALLOCA_O=alloca86.o
+BCHECK_O=bcheck.o alloca86-bt.o
+BCHECK=bcheck.a
+endif
+
 ifeq ($(ARCH),x86-64)
 NATIVE_TARGET=-DTCC_TARGET_X86_64
 LIBTCC1=libtcc1.a
-BCHECK_O=
 ALLOCA_O=alloca86_64.o
-endif
 endif
 
 ifeq ($(ARCH),arm)
@@ -54,7 +59,10 @@ endif
 
 ifdef CONFIG_WIN32
 NATIVE_TARGET+=-DTCC_TARGET_PE
-BCHECK_O=
+endif
+
+ifneq ($(wildcard /lib/ld-uClibc.so.0),)
+NATIVE_TARGET+=-DTCC_UCLIBC
 endif
 
 ifdef CONFIG_USE_LIBGCC
@@ -108,7 +116,7 @@ ifdef CONFIG_CROSS
 PROGS+=$(PROGS_CROSS)
 endif
 
-all: $(PROGS) $(LIBTCC1) $(BCHECK_O) libtcc.a tcc-doc.html tcc.1 libtcc_test$(EXESUF)
+all: $(PROGS) $(LIBTCC1) $(BCHECK) libtcc.a tcc-doc.html tcc.1 libtcc_test$(EXESUF)
 
 # Host Tiny C Compiler
 tcc$(EXESUF): $(NATIVE_FILES)
@@ -191,12 +199,15 @@ libtcc1.a: $(LIBTCC1_OBJS)
 bcheck.o: bcheck.c
 	$(CC) -o $@ -c $< -O2 -Wall
 
+bcheck.a: $(BCHECK_O)
+	$(AR) rcs $@ $^
+
 # install
 TCC_INCLUDES = stdarg.h stddef.h stdbool.h float.h varargs.h tcclib.h
 INSTALL=install
 
 ifndef CONFIG_WIN32
-install: $(PROGS) $(LIBTCC1) $(BCHECK_O) libtcc.a tcc.1 tcc-doc.html
+install: $(PROGS) $(LIBTCC1) $(BCHECK) libtcc.a tcc.1 tcc-doc.html
 	mkdir -p "$(bindir)"
 	$(INSTALL) -m755 $(PROGS) "$(bindir)"
 	mkdir -p "$(mandir)/man1"
@@ -206,8 +217,8 @@ install: $(PROGS) $(LIBTCC1) $(BCHECK_O) libtcc.a tcc.1 tcc-doc.html
 ifneq ($(LIBTCC1),)
 	$(INSTALL) -m644 $(LIBTCC1) "$(tccdir)"
 endif
-ifneq ($(BCHECK_O),)
-	$(INSTALL) -m644 $(BCHECK_O) "$(tccdir)"
+ifneq ($(BCHECK),)
+	$(INSTALL) -m644 $(BCHECK) "$(tccdir)"
 endif
 	$(INSTALL) -m644 $(addprefix include/,$(TCC_INCLUDES)) "$(tccdir)/include"
 	mkdir -p "$(docdir)"
@@ -219,7 +230,7 @@ endif
 
 uninstall:
 	rm -fv $(foreach P,$(PROGS),"$(bindir)/$P")
-	rm -fv $(foreach P,$(LIBTCC1) $(BCHECK_O),"$(tccdir)/$P")
+	rm -fv $(foreach P,$(LIBTCC1) $(BCHECK),"$(tccdir)/$P")
 	rm -fv $(foreach P,$(TCC_INCLUDES),"$(tccdir)/include/$P")
 	rm -fv "$(docdir)/tcc-doc.html" "$(mandir)/man1/tcc.1"
 	rm -fv "$(libdir)/libtcc.a" "$(includedir)/libtcc.h"
