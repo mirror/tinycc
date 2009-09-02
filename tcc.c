@@ -54,6 +54,8 @@ void help(void)
            "  -static     static linking\n"
            "  -rdynamic   export all global symbols to dynamic linker\n"
            "  -r          generate (relocatable) object file\n"
+           "  --whole-archive    include all object files in the archives\n"
+           "  --no-whole-archive turn the effect of --whole-archives off\n"
            "Debugger options:\n"
            "  -g          generate runtime debug info\n"
 #ifdef CONFIG_TCC_BCHECK
@@ -66,13 +68,15 @@ void help(void)
 }
 
 static char **files;
-static int nb_files, nb_libraries;
+static char **whole_archives;
+static int nb_files, nb_libraries, nb_whole_archive;
 static int multiple_files;
 static int print_search_dirs;
 static output_t output_type;
 static int reloc_output;
 static const char *outfile;
 static int do_bench = 0;
+static unsigned do_whole_archive = 0;
 
 #define TCC_OPTION_HAS_ARG 0x0001
 #define TCC_OPTION_NOSEP   0x0002 /* cannot have space before option and arg */
@@ -227,6 +231,7 @@ int parse_args(TCCState *s, int argc, char **argv)
         if (r[0] != '-' || r[1] == '\0') {
             /* add a new file */
             dynarray_add((void ***)&files, &nb_files, r);
+            dynarray_add((void ***)&whole_archives, &nb_whole_archive, (void*)do_whole_archive);
             if (!multiple_files) {
                 optind--;
                 /* argv[0] will be this file */
@@ -297,6 +302,7 @@ int parse_args(TCCState *s, int argc, char **argv)
                 break;
             case TCC_OPTION_l:
                 dynarray_add((void ***)&files, &nb_files, r);
+                dynarray_add((void ***)&whole_archives, &nb_whole_archive, (void*)do_whole_archive);
                 nb_libraries++;
                 break;
             case TCC_OPTION_bench:
@@ -442,6 +448,10 @@ int parse_args(TCCState *s, int argc, char **argv)
                         {
                             error("target %s not found", p);
                         }
+                    } else if (strstart(optarg, "--whole-archive", &p)) {
+                        do_whole_archive = 1;
+                    } else if (strstart(optarg, "--no-whole-archive", &p)) {
+                        do_whole_archive = 0;
                     } else {
                         error("unsupported linker option '%s'", optarg);
                     }
@@ -481,8 +491,10 @@ int main(int argc, char **argv)
     outfile = NULL;
     multiple_files = 1;
     files = NULL;
+    whole_archives = NULL;
     nb_files = 0;
     nb_libraries = 0;
+    nb_whole_archive = 0;
     reloc_output = 0;
     print_search_dirs = 0;
     ret = 0;
@@ -566,9 +578,10 @@ int main(int argc, char **argv)
                 ret = 1;
             }
         } else {
+            int whole = ((int)whole_archives[i]) << 3; /* AFF_WHOLE_ARCHIVE */
             if (1 == s->verbose)
-                printf("-> %s\n", filename);
-            if (tcc_add_file(s, filename) < 0)
+                printf("-%c %s\n", whole?'[':'>', filename);
+            if (tcc_add_file_internal(s, filename, whole) < 0)
                 ret = 1;
         }
     }

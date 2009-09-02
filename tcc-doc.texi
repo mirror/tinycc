@@ -299,6 +299,14 @@ also be given).
 @item -Wl,-Ttext,address
 Set the start of the .text section to @var{address}.
 
+@item -Wl,--whole-archive
+Add a whole archive, not just the symbols of the archive that would
+satisfy undefined symbols in the program.
+
+@item -Wl,--no-whole-archive
+Turn off the effect of the --whole-archive option for subsequent archive
+files.
+
 @item -Wl,--oformat,fmt
 Use @var{fmt} as output format. The supported output formats are:
 @table @code

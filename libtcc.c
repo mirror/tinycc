@@ -206,6 +206,7 @@ static int tcc_add_dll(TCCState *s, const char *filename, int flags);
 #define AFF_PRINT_ERROR     0x0001 /* print error if file not found */
 #define AFF_REFERENCED_DLL  0x0002 /* load a referenced dll from another dll */
 #define AFF_PREPROCESS      0x0004 /* preprocess file */
+#define AFF_WHOLE_ARCHIVE   0x0008 /* add whole archive not just undef symbol */
 static int tcc_add_file_internal(TCCState *s, const char *filename, int flags);
 
 /* tcccoff.c */
@@ -2117,7 +2118,7 @@ static int tcc_add_file_internal(TCCState *s1, const char *filename, int flags)
 
     if (memcmp((char *)&ehdr, ARMAG, 8) == 0) {
         file->line_num = 0; /* do not display line number if error */
-        ret = tcc_load_archive(s1, fd);
+        ret = tcc_load_archive(s1, fd, flags & AFF_WHOLE_ARCHIVE);
         goto the_end;
     }
 
@@ -2134,9 +2135,11 @@ static int tcc_add_file_internal(TCCState *s1, const char *filename, int flags)
     /* as GNU ld, consider it is an ld script if not recognized */
     ret = tcc_load_ldscript(s1);
 #endif
+/* TODO: the_end label should be here !! */
     if (ret < 0)
-        error_noabort("unrecognized file type");
-
+        error_noabort("%s: unrecognized file type", filename);
+    else if (s1->verbose)
+        printf("+> %s\n", filename);
 the_end:
     if (file)
         tcc_close(file);

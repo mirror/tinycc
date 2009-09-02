@@ -1208,7 +1208,7 @@ static void tcc_add_runtime(TCCState *s1)
                     bounds_section->sh_num, "__bounds_start");
         /* add bound check code */
         snprintf(buf, sizeof(buf), "%s/%s", s1->tcc_lib_path, "bcheck.o");
-        tcc_add_file(s1, buf);
+        tcc_add_file_internal(s1, buf, AFF_WHOLE_ARCHIVE | AFF_PRINT_ERROR);
 #ifdef TCC_TARGET_I386
         if (s1->output_type != TCC_OUTPUT_MEMORY) {
             /* add 'call __bound_init()' in .init section */
@@ -2425,7 +2425,7 @@ static int get_be32(const uint8_t *b)
 }
 
 /* load only the objects which resolve undefined symbols */
-static int tcc_load_alacarte(TCCState *s1, int fd, int size)
+static int tcc_load_alacarte(TCCState *s1, int fd, int size, int whole_archive)
 {
     int i, bound, nsyms, sym_index, off, ret;
     uint8_t *data;
@@ -2447,6 +2447,7 @@ static int tcc_load_alacarte(TCCState *s1, int fd, int size)
             if(sym_index) {
                 sym = &((ElfW(Sym) *)symtab_section->data)[sym_index];
                 if(sym->st_shndx == SHN_UNDEF) {
+ load_obj:
                     off = get_be32(ar_index + i * 4) + sizeof(ArchiveHeader);
 #if 0
                     printf("%5d\t%s\t%08x\n", i, p, sym->st_shndx);
@@ -2459,6 +2460,8 @@ static int tcc_load_alacarte(TCCState *s1, int fd, int size)
                         goto the_end;
                     }
                 }
+            } else if (whole_archive) {
+                goto load_obj;
             }
         }
     } while(bound);
@@ -2469,7 +2472,7 @@ static int tcc_load_alacarte(TCCState *s1, int fd, int size)
 }
 
 /* load a '.a' file */
-static int tcc_load_archive(TCCState *s1, int fd)
+static int tcc_load_archive(TCCState *s1, int fd, int whole_archive)
 {
     ArchiveHeader hdr;
     char ar_size[11];
@@ -2505,7 +2508,7 @@ static int tcc_load_archive(TCCState *s1, int fd)
         if (!strcmp(ar_name, "/")) {
             /* coff symbol table : we handle it */
             if(s1->alacarte_link)
-                return tcc_load_alacarte(s1, fd, size);
+                return tcc_load_alacarte(s1, fd, size, whole_archive);
         } else if (!strcmp(ar_name, "//") ||
                    !strcmp(ar_name, "__.SYMDEF") ||
                    !strcmp(ar_name, "__.SYMDEF/") ||
