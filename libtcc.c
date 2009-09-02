@@ -2271,10 +2271,7 @@ int tcc_set_output_type(TCCState *s, output_t output_type)
         tcc_add_file(s, CONFIG_TCC_CRT_PREFIX "/crti.o");
     }
 #endif
-#ifdef TCC_USE_LIBTCC
-    snprintf(buf, sizeof(buf) < strlen(s->tcc_lib_path) ? sizeof(buf) : strlen(s->tcc_lib_path) - 3, "%s", s->tcc_lib_path);
-    tcc_add_library_path(s, buf);
-#endif
+
 #ifdef TCC_TARGET_PE
     snprintf(buf, sizeof(buf), "%s/lib", s->tcc_lib_path);
     tcc_add_library_path(s, buf);
