@@ -3265,6 +3265,16 @@ static void unary(void)
         } else {
             r = s->r;
         }
+
+        if (tcc_state->verbose == 4)
+            if ((r & (VT_VALMASK | VT_SYM)) == (VT_CONST | VT_SYM))
+                printf("%s:%d:     %s %s\n",
+                    file->filename,
+                    file->line_num,
+                    tok == '(' ? "call" : " ref",
+                    get_tok_str(s->v, NULL)
+                    );
+
         vset(&s->type, r, s->c);
         /* if forward reference, we must point to s */
         if (vtop->r & VT_SYM) {
@@ -4897,6 +4907,14 @@ static void gen_function(Sym *sym)
     /* put debug symbol */
     if (tcc_state->do_debug)
         put_func_debug(sym);
+
+    if (tcc_state->verbose == 4)
+        printf("%s:%d: function %s\n",
+            file->filename,
+            file->line_num,
+            get_tok_str(sym->v, NULL)
+            );
+
     /* push a dummy symbol to enable local sym storage */
     sym_push2(&local_stack, SYM_FIELD, 0, 0);
     gfunc_prolog(&sym->type);
@@ -5142,6 +5160,15 @@ static void decl(int l)
 #endif
                         external_sym(v, &type, r);
                     } else {
+
+                        if (tcc_state->verbose == 4)
+                            if (l != VT_LOCAL)
+                                printf("%s:%d: data %s\n",
+                                    file->filename,
+                                    file->line_num,
+                                    get_tok_str(v, NULL)
+                                    );
+
                         type.t |= (btype.t & VT_STATIC); /* Retain "static". */
                         if (type.t & VT_STATIC)
                             r |= VT_CONST;
