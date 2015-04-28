@@ -55,10 +55,9 @@ ST_DATA Sym *define_stack;
 ST_DATA Sym *global_label_stack;
 ST_DATA Sym *local_label_stack;
 
-ST_DATA int vla_sp_loc_tmp; /* vla_sp_loc is set to this when the value won't be needed later */
+ST_DATA int vlas_in_scope; /* number of VLAs that are currently in scope */
 ST_DATA int vla_sp_root_loc; /* vla_sp_loc for SP before any VLAs were pushed */
-ST_DATA int *vla_sp_loc; /* Pointer to variable holding location to store stack pointer on the stack when modifying stack pointer */
-ST_DATA int vla_flags; /* VLA_* flags */
+ST_DATA int vla_sp_loc; /* Pointer to variable holding location to store stack pointer on the stack when modifying stack pointer */
 
 ST_DATA SValue __vstack[1+VSTACK_SIZE], *vtop;
 
@@ -72,12 +71,6 @@ ST_DATA int last_line_num, last_ind, func_ind; /* debug last line number and pc 
 ST_DATA char *funcname;
 
 ST_DATA CType char_pointer_type, func_old_type, int_type, size_type;
-
-static void assert(int x)
-{
-    if (x== 0)
-        *(int *)0 = 0;
-}
 
 /* ------------------------------------------------------------------------- */
 static void gen_cast(CType *type);
@@ -93,8 +86,8 @@ static int decl0(int l, int is_for_loop_init);
 static void expr_eq(void);
 static void unary_type(CType *type);
 static void vla_runtime_type_size(CType *type, int *a);
-static void vla_sp_save(int addr);
-static void vla_sp_restore(int addr);
+static void vla_sp_restore(void);
+static void vla_sp_restore_root(void);
 static int is_compatible_parameter_types(CType *type1, CType *type2);
 static void expr_type(CType *type);
 ST_FUNC void vpush64(int ty, unsigned long long v);
@@ -2230,27 +2223,15 @@ ST_FUNC void vla_runtime_type_size(CType *type, int *a)
     }
 }
 
-static void vla_sp_save(int addr) {
-    int addr_flag = 1;
-    if (!(vla_flags & VLA_SP_LOC_SET)) {
-        if (addr == 0) {
-            addr = (loc -= 8);
-            addr_flag = 0;
-        }
-        assert(addr);
-        *vla_sp_loc = addr;
-        vla_flags |= VLA_SP_LOC_SET;
-    }
-    if (!(vla_flags & VLA_SP_SAVED)) {
-        if (!addr_flag)
-            gen_vla_sp_save(*vla_sp_loc);
-        vla_flags |= VLA_SP_SAVED;
+static void vla_sp_restore(void) {
+    if (vlas_in_scope) {
+        gen_vla_sp_restore(vla_sp_loc);
     }
 }
 
-static void vla_sp_restore(int addr) {
-    if (vla_flags & VLA_IN_SCOPE) {
-        gen_vla_sp_restore(addr);
+static void vla_sp_restore_root(void) {
+    if (vlas_in_scope) {
+        gen_vla_sp_restore(vla_sp_root_loc);
     }
 }
 
@@ -2669,10 +2650,7 @@ ST_FUNC void vstore(void)
                 }
 #endif
             }
-            if (vtop->r == TREG_RSP)
-                r = TREG_RSP;
-            else
-                r = gv(rc);  /* generate value */
+            r = gv(rc);  /* generate value */
             /* if lvalue was saved on stack, must read it */
             if ((vtop[-1].r & VT_VALMASK) == VT_LLOCAL) {
                 SValue sv;
@@ -4817,10 +4795,7 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
     } else if (tok == TOK_WHILE) {
         next();
         d = ind;
-        if (vla_flags & VLA_IN_SCOPE) {
-          gen_vla_sp_restore(*vla_sp_loc);
-        }
-            vla_sp_restore(*vla_sp_loc);
+        vla_sp_restore();
         skip('(');
         gexpr();
         skip(')');
@@ -4832,7 +4807,7 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
         gsym_addr(b, d);
     } else if (tok == '{') {
         Sym *llabel;
-        int block_vla_sp_loc, *saved_vla_sp_loc, saved_vla_flags, *orig_vla_sp_loc;
+        int block_vla_sp_loc = vla_sp_loc, saved_vlas_in_scope = vlas_in_scope;
 
         next();
         /* record local declaration stack position */
@@ -4841,14 +4816,6 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
         frame_bottom->next = scope_stack_bottom;
         scope_stack_bottom = frame_bottom;
         llabel = local_label_stack;
-        
-        /* save VLA state */
-        block_vla_sp_loc = *(saved_vla_sp_loc = vla_sp_loc);
-        if (saved_vla_sp_loc != &vla_sp_root_loc)
-            vla_sp_loc = &block_vla_sp_loc;
-        orig_vla_sp_loc = vla_sp_loc;
-
-        saved_vla_flags = vla_flags;
         
         /* handle local labels declarations */
         if (tok == TOK_LABEL) {
@@ -4899,13 +4866,11 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
         sym_pop(&local_stack, s);
         
         /* Pop VLA frames and restore stack pointer if required */
-        if (saved_vla_sp_loc != &vla_sp_root_loc)
-            *saved_vla_sp_loc = block_vla_sp_loc;
-        if (vla_sp_loc != orig_vla_sp_loc) {
-            vla_sp_restore(*saved_vla_sp_loc);
+        if (vlas_in_scope > saved_vlas_in_scope) {
+            vla_sp_loc = saved_vlas_in_scope ? block_vla_sp_loc : vla_sp_root_loc;
+            vla_sp_restore();
         }
-        vla_sp_loc = saved_vla_sp_loc;
-        vla_flags = (vla_flags & ~VLA_SCOPE_FLAGS) | (saved_vla_flags & VLA_SCOPE_FLAGS);
+        vlas_in_scope = saved_vlas_in_scope;
         
         next();
     } else if (tok == TOK_RETURN) {
@@ -4985,7 +4950,7 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
         /* compute jump */
         if (!csym)
             tcc_error("cannot continue");
-        vla_sp_restore(vla_sp_root_loc);
+        vla_sp_restore_root();
         *csym = gjmp(*csym);
         next();
         skip(';');
@@ -5008,7 +4973,7 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
         skip(';');
         d = ind;
         c = ind;
-        vla_sp_restore(*vla_sp_loc);
+        vla_sp_restore();
         a = 0;
         b = 0;
         if (tok != ';') {
@@ -5019,7 +4984,7 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
         if (tok != ')') {
             e = gjmp(0);
             c = ind;
-            vla_sp_restore(*vla_sp_loc);
+            vla_sp_restore();
             gexpr();
             vpop();
             gjmp_addr(d);
@@ -5038,7 +5003,7 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
         a = 0;
         b = 0;
         d = ind;
-        vla_sp_restore(*vla_sp_loc);
+        vla_sp_restore();
         block(&a, &b, case_sym, def_sym, case_reg, 0);
         skip(TOK_WHILE);
         skip('(');
@@ -5136,7 +5101,7 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
                 if (s->r == LABEL_DECLARED)
                     s->r = LABEL_FORWARD;
             }
-            vla_sp_restore(vla_sp_root_loc);
+            vla_sp_restore_root();
             if (s->r & LABEL_FORWARD) 
                 s->jnext = gjmp(s->jnext);
             else
@@ -5162,7 +5127,7 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
                 s = label_push(&global_label_stack, b, LABEL_DEFINED);
             }
             s->jnext = ind;
-            vla_sp_restore(*vla_sp_loc);
+            vla_sp_restore();
             /* we accept this, but it is a mistake */
         block_after_label:
             if (tok == '}') {
@@ -5466,27 +5431,17 @@ static void decl_initializer(CType *type, Section *sec, unsigned long c,
         int a;
         
         /* save current stack pointer */
-        if (vla_sp_loc == &vla_sp_root_loc) {
-            int c = (loc -= PTR_SIZE);
-            vpushi(0);
-            gen_vla_alloc(type, -1); // type isn't right, but any pointer type will do.
-            vset(type, VT_LOCAL|VT_LVAL, c);
-            vswap();
-            vstore();
-            vpop();
-            *vla_sp_loc = c;
-            vla_flags = VLA_IN_SCOPE;
-            vla_sp_loc = &vla_sp_loc_tmp;
+        if (vlas_in_scope == 0) {
+            if (vla_sp_root_loc == -1)
+                vla_sp_root_loc = (loc -= PTR_SIZE);
+            gen_vla_sp_save(vla_sp_root_loc);
         }
         
         vla_runtime_type_size(type, &a);
         gen_vla_alloc(type, a);
-        vla_flags = VLA_IN_SCOPE;
-        vla_sp_save(c);
-        vset(type, VT_LOCAL|VT_LVAL, c);
-        vswap();
-        vstore();
-        vpop();
+        gen_vla_sp_save(c);
+        vla_sp_loc = c;
+        vlas_in_scope++;
     } else if (type->t & VT_ARRAY) {
         s = type->ref;
         n = s->c;
@@ -6069,8 +6024,8 @@ static void gen_function(Sym *sym)
     funcname = get_tok_str(sym->v, NULL);
     func_ind = ind;
     /* Initialize VLA state */
-    vla_sp_loc = &vla_sp_root_loc;
-    vla_flags = 0;
+    vla_sp_loc = -1;
+    vla_sp_root_loc = -1;
     /* put debug symbol */
     if (tcc_state->do_debug)
         put_func_debug(sym);

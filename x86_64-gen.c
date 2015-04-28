@@ -395,8 +395,7 @@ void load(int r, SValue *sv)
             v1.r = VT_LOCAL | VT_LVAL;
             v1.c.ul = fc;
             fr = r;
-            if (!(reg_classes[fr] & (RC_INT|RC_R11)) &&
-                fr != TREG_RSP)
+            if (!(reg_classes[fr] & (RC_INT|RC_R11)))
                 fr = get_reg(RC_INT);
             load(fr, &v1);
         }
@@ -2234,18 +2233,14 @@ ST_FUNC void gen_vla_alloc(CType *type, int align) {
     vset(type, REG_IRET, 0);
 #else
     int r;
-    /* we use align == -1 to indicate a zero-byte allocation */
-    if (align != -1) {
-        r = gv(RC_INT); /* allocation size */
-        /* sub r,%rsp */
-        o(0x2b48);
-        o(0xe0 | REG_VALUE(r));
-        /* We align to 16 bytes rather than align */
-        /* and ~15, %rsp */
-        o(0xf0e48348);
-    }
+    r = gv(RC_INT); /* allocation size */
+    /* sub r,%rsp */
+    o(0x2b48);
+    o(0xe0 | REG_VALUE(r));
+    /* We align to 16 bytes rather than align */
+    /* and ~15, %rsp */
+    o(0xf0e48348);
     vpop();
-    vset(type, TREG_RSP, 0);
 #endif
 }
 
