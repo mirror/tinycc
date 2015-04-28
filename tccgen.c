@@ -2109,6 +2109,8 @@ static void force_charshort_cast(int t)
     }
 }
 
+void orex(int bs, int r, int r2, int b);
+
 /* cast 'vtop' to 'type'. Casting to bitfields is forbidden. */
 static void gen_cast(CType *type)
 {
@@ -2266,7 +2268,7 @@ static void gen_cast(CType *type)
 #elif defined(TCC_TARGET_X86_64)
                         int r = gv(RC_INT);
                         /* x86_64 specific: movslq */
-                        o(0x6348);
+			orex(64, r, r, 0x63);
                         o(0xc0 + (REG_VALUE(r) << 3) + REG_VALUE(r));
 #else
 #error
