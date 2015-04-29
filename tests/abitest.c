@@ -13,6 +13,13 @@
 #define LONG_DOUBLE_LITERAL(x) x ## L
 #endif
 
+#include <signal.h>
+
+void segv_handler(int i)
+{
+  for(;;);
+}
+
 static const char *tccdir = NULL;
 static const char *include_dir = NULL;
 
@@ -103,6 +110,116 @@ static int ret_2float_test(void) {
 }
 
 /*
+ * ret_16char_test:
+ * 
+ * On x86-64, a struct with 2 floats should be packed into a single
+ * SSE register (VT_DOUBLE is used for this purpose).
+ */
+typedef struct ret_16char_test_type_s {char x, y, z, w, a, b, c, d; char x2, y2, z2, w2, a2, b2, c2, d2; } ret_16char_test_type;
+typedef ret_16char_test_type (*ret_16char_test_function_type) (ret_16char_test_type);
+
+static int ret_16char_test_callback(void *ptr) {
+  ret_16char_test_function_type f = (ret_16char_test_function_type)ptr;
+  ret_16char_test_type a = {10, 35, 0, 0, 0, 0, 0, 0, 11, 36, 0, 0, 0, 0, 0, 0 };
+  ret_16char_test_type r;
+  r = f(a);
+  return ((r.x == a.x*5) && (r.y == a.y*3) &&
+	  (r.x2 == a.x2*5) && (r.y2 == a.y2*3)) ? 0 : -1;
+}
+
+static int ret_16char_test(void) {
+  const char *src =
+  "typedef struct ret_16char_test_type_s {char x, y, z, w, a, b, c, d; char x2, y2, z2, w2, a2, b2, c2, d2; } ret_16char_test_type;"
+  "ret_16char_test_type f(ret_16char_test_type a) {\n"
+  "  ret_16char_test_type r = {a.x*5, a.y*3, 0, 0, 0, 0, 0, 0, a.x2*5, a.y2*3, 0,0,0,0,0,0};\n"
+  "  return r;\n"
+  "}\n";
+
+  return run_callback(src, ret_16char_test_callback);
+}
+
+/*
+ * ret_8char_test:
+ * 
+ * On x86-64, a struct with 2 floats should be packed into a single
+ * SSE register (VT_DOUBLE is used for this purpose).
+ */
+typedef struct ret_8char_test_type_s {char x, y, z, w, a, b, c, d;} ret_8char_test_type;
+typedef ret_8char_test_type (*ret_8char_test_function_type) (ret_8char_test_type);
+
+static int ret_8char_test_callback(void *ptr) {
+  ret_8char_test_function_type f = (ret_8char_test_function_type)ptr;
+  ret_8char_test_type a = {10, 35};
+  ret_8char_test_type r;
+  r = f(a);
+  return ((r.x == a.x*5) && (r.y == a.y*3)) ? 0 : -1;
+}
+
+static int ret_8char_test(void) {
+  const char *src =
+  "typedef struct ret_8char_test_type_s {float x, y;} ret_8char_test_type;"
+  "ret_8char_test_type f(ret_8char_test_type a) {\n"
+  "  ret_8char_test_type r = {a.x*5, a.y*3};\n"
+  "  return r;\n"
+  "}\n";
+
+  return run_callback(src, ret_2float_test_callback);
+}
+
+/*
+ * ret_4char_float_test:
+ * 
+ * On x86-64, a struct with 2 floats should be packed into a single
+ * SSE register (VT_DOUBLE is used for this purpose).
+ */
+typedef struct ret_4char_float_test_type_s {float x; char y, a, b, c, d;} ret_4char_float_test_type;
+typedef ret_4char_float_test_type (*ret_4char_float_test_function_type) (ret_4char_float_test_type);
+
+static int ret_4char_float_test_callback(void *ptr) {
+  ret_4char_float_test_function_type f = (ret_4char_float_test_function_type)ptr;
+  ret_4char_float_test_type a = {10, 35};
+  ret_4char_float_test_type r;
+  r = f(a);
+  return ((r.x == a.x*5) && (r.y == a.y*3)) ? 0 : -1;
+}
+
+static int ret_4char_float_test(void) {
+  const char *src =
+  "typedef struct ret_4char_float_test_type_s {float x, y;} ret_4char_float_test_type;"
+  "ret_4char_float_test_type f(ret_4char_float_test_type a) {\n"
+  "  ret_4char_float_test_type r = {a.x*5, a.y*3};\n"
+  "  return r;\n"
+  "}\n";
+
+  return run_callback(src, ret_2float_test_callback);
+}
+
+/*
+ * ret_intchar_test:
+ */
+typedef struct ret_intchar_test_type_s {int x; char y;} ret_intchar_test_type;
+typedef ret_intchar_test_type (*ret_intchar_test_function_type) (ret_intchar_test_type);
+
+static int ret_intchar_test_callback(void *ptr) {
+  ret_intchar_test_function_type f = (ret_intchar_test_function_type)ptr;
+  ret_intchar_test_type a = {10, 35};
+  ret_intchar_test_type r;
+  r = f(a);
+  return ((r.x == a.x*5) && (r.y == a.y*3)) ? 0 : -1;
+}
+
+static int ret_intchar_test(void) {
+  const char *src =
+  "typedef struct ret_intchar_test_type_s {int x; char y;} ret_intchar_test_type;"
+  "ret_intchar_test_type f(ret_intchar_test_type a) {\n"
+  "  ret_intchar_test_type r = {a.x*5, a.y*3};\n"
+  "  return r;\n"
+  "}\n";
+
+  return run_callback(src, ret_intchar_test_callback);
+}
+
+/*
  * ret_2double_test:
  * 
  * On x86-64, a struct with 2 doubles should be passed in two SSE
@@ -115,15 +232,20 @@ static int ret_2double_test_callback(void *ptr) {
   ret_2double_test_function_type f = (ret_2double_test_function_type)ptr;
   ret_2double_test_type a = {10, 35};
   ret_2double_test_type r;
+  fprintf(stderr, "a.x = %f a.y = %f\n", a.x, a.y);
   r = f(a);
+  fprintf(stderr, "r.x = %f r.y = %f\n", r.x, r.y);
   return ((r.x == a.x*5) && (r.y == a.y*3)) ? 0 : -1;
 }
 
 static int ret_2double_test(void) {
   const char *src =
-  "typedef struct ret_2double_test_type_s {double x, y;} ret_2double_test_type;"
+  "typedef struct ret_2double_test_type_s {double x, y;} ret_2double_test_type;\n"
+  "#include <stdio.h>\n"
   "ret_2double_test_type f(ret_2double_test_type a) {\n"
+  "  fprintf(stderr, \"[cb] a.x = %f a.y = %f\n\", a.x, a.y);\n"
   "  ret_2double_test_type r = {a.x*5, a.y*3};\n"
+  "  fprintf(stderr, \"[cb] r.x = %f r.y = %f\n\", r.x, r.y);\n"
   "  return r;\n"
   "}\n";
 
@@ -282,16 +404,22 @@ typedef reg_pack_longlong_test_type (*reg_pack_longlong_test_function_type) (reg
 static int reg_pack_longlong_test_callback(void *ptr) {
   reg_pack_longlong_test_function_type f = (reg_pack_longlong_test_function_type)ptr;
   reg_pack_longlong_test_type a = {10, 35};
+  reg_pack_longlong_test_type b;
   reg_pack_longlong_test_type r;
+  fprintf(stderr, "a.x = %Ld a.y = %Ld\n", a.x, a.y);
   r = f(a);
+  fprintf(stderr, "r.x = %Ld r.y = %Ld\n", r.x, r.y);
   return ((r.x == a.x*5) && (r.y == a.y*3)) ? 0 : -1;
 }
 
 static int reg_pack_longlong_test(void) {
   const char *src =
+  "#include <stdio.h>\n"
   "typedef struct reg_pack_longlong_test_type_s {long long x, y;} reg_pack_longlong_test_type;"
   "reg_pack_longlong_test_type f(reg_pack_longlong_test_type a) {\n"
+  "  fprintf(stderr, \"[cb] a.x = %Ld a.y = %Ld\n\", a.x, a.y);\n"
   "  reg_pack_longlong_test_type r = {a.x*5, a.y*3};\n"
+  "  fprintf(stderr, \"[cb] r.x = %Ld r.y = %Ld\n\", r.x, r.y);\n"
   "  return r;\n"
   "}\n";
   
@@ -412,7 +540,7 @@ static int two_member_union_test(void) {
 }
 
 /*
- * Win64 calling convetntion test.
+ * Win64 calling convention test.
  */
 
 typedef struct many_struct_test_type_s {long long a, b, c;} many_struct_test_type;
@@ -562,6 +690,7 @@ static int stdarg_struct_test_callback(void *ptr) {
 
 static int stdarg_struct_test(void) {
   const char *src =
+  "#include <stdio.h>\n"
   "#include <stdarg.h>\n"
   "typedef struct {long long a, b, c;} stdarg_struct_test_struct_type;\n"
   "int f(stdarg_struct_test_struct_type a, ...) {\n"
@@ -569,6 +698,7 @@ static int stdarg_struct_test(void) {
   "  va_start(ap, a);\n"
   "  int z = va_arg(ap, int);\n"
   "  va_end(ap);\n"
+  "  fprintf(stderr, \"[cb] a.a = %Ld a.b = %Ld a.c = %Ld z = %d\n\", a.a, a.b, a.c, z);\n"
   "  return z + a.a + a.b + a.c;\n"
   "}\n";
   return run_callback(src, stdarg_struct_test_callback);
@@ -609,7 +739,7 @@ int main(int argc, char **argv) {
   const char *testname = NULL;
   int retval = EXIT_SUCCESS;
 
-  //signal(SIGSEGV, segv_handler);
+  signal(SIGSEGV, segv_handler);
 
   /* if tcclib.h and libtcc1.a are not installed, where can we find them */
   for (i = 1; i < argc; ++i) {
