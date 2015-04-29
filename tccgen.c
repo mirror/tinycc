@@ -349,7 +349,6 @@ static void vsetc(CType *type, int r, CValue *vc)
     vtop++;
     vtop->type = *type;
     vtop->r = r;
-    vtop->r2 = VT_CONST;
     vtop->c = *vc;
 }
 
@@ -586,8 +585,7 @@ ST_FUNC void save_reg(int r)
     saved = 0;
     l = 0;
     for(p=vstack;p<=vtop;p++) {
-        if ((p->r & VT_VALMASK) == r ||
-            ((p->type.t & VT_BTYPE) == VT_LLONG && (p->r2 & VT_VALMASK) == r)) {
+        if ((p->r & VT_VALMASK) == r) {
             /* must save value on stack if not already done */
             if (!saved) {
                 /* NOTE: must reload 'r' because r might be equal to r2 */
@@ -632,7 +630,6 @@ ST_FUNC void save_reg(int r)
             } else {
                 p->r = lvalue_type(p->type.t) | VT_LOCAL;
             }
-            p->r2 = VT_CONST;
             p->c.ul = l;
         }
     }
@@ -651,8 +648,7 @@ ST_FUNC int get_reg_ex(int rc, int rc2)
             int n;
             n=0;
             for(p = vstack; p <= vtop; p++) {
-                if ((p->r & VT_VALMASK) == r ||
-                    (p->r2 & VT_VALMASK) == r)
+                if ((p->r & VT_VALMASK) == r)
                     n++;
             }
             if (n <= 1)
@@ -859,7 +855,6 @@ static void gbound(void)
 ST_FUNC int gv(RegSet rc)
 {
     int r, bit_pos, bit_size, size, align, i;
-    int rc2;
 
     /* NOTE: get_reg can modify vstack[] */
     if (vtop->type.t & VT_BITFIELD) {
@@ -934,30 +929,16 @@ ST_FUNC int gv(RegSet rc)
 #endif
 
         r = vtop->r & VT_VALMASK;
-        rc2 = (rc & RC_FLOAT) ? RC_FLOAT : RC_INT;
-#ifndef TCC_TARGET_ARM64
-        if (rc == RC_IRET)
-            rc2 = RC_LRET;
-#ifdef TCC_TARGET_X86_64
-        else if (rc == RC_FRET)
-            rc2 = RC_QRET;
-#endif
-#endif
+
+        int r1 = -1;
 
         /* need to reload if:
            - constant
            - lvalue (need to dereference pointer)
            - already a register, but not in the right class */
         if (r >= VT_CONST
-         || (vtop->r & VT_LVAL)
-         || !(reg_classes[r] & rc)
-#if defined(TCC_TARGET_ARM64) || defined(TCC_TARGET_X86_64)
-         || ((vtop->type.t & VT_BTYPE) == VT_QLONG && !(reg_classes[vtop->r2] & rc2))
-         || ((vtop->type.t & VT_BTYPE) == VT_QFLOAT && !(reg_classes[vtop->r2] & rc2))
-#else
-         || ((vtop->type.t & VT_BTYPE) == VT_LLONG && !(reg_classes[vtop->r2] & rc2))
-#endif
-            )
+            || (vtop->r & VT_LVAL)
+            || !(regset_has(rc, r)))
         {
 	    r1 = find_cached_value(vtop);
 	    r = -1;
@@ -995,51 +976,8 @@ ST_FUNC int gv(RegSet rc)
                 original_type = vtop->type.t;
                 /* two register type load : expand to two words
                    temporarily */
-#if !defined(TCC_TARGET_ARM64) && !defined(TCC_TARGET_X86_64)
-                if ((vtop->r & (VT_VALMASK | VT_LVAL)) == VT_CONST) {
-                    /* load constant */
-                    ll = vtop->c.ull;
-                    vtop->c.ui = ll; /* first word */
-                    load(r, vtop);
-                    vtop->r = r; /* save register value */
-                    vpushi(ll >> 32); /* second word */
-                } else
-#endif
-                if (r >= VT_CONST || /* XXX: test to VT_CONST incorrect ? */
-                           (vtop->r & VT_LVAL)) {
-                    /* We do not want to modifier the long long
-                       pointer here, so the safest (and less
-                       efficient) is to save all the other registers
-                       in the stack. XXX: totally inefficient. */
-                    save_regs(1);
-                    /* load from memory */
-                    vtop->type.t = load_type;
-                    load(r, vtop);
-                    vdup();
-                    vtop[-1].r = r; /* save register value */
-                    /* increment pointer to get second word */
-                    vtop->type.t = addr_type;
-                    gaddrof();
-                    vpushi(load_size);
-                    gen_op('+');
-                    vtop->r |= VT_LVAL;
-                    vtop->type.t = load_type;
-                } else {
-                    /* move registers */
-                    load(r, vtop);
-                    vdup();
-                    vtop[-1].r = r; /* save register value */
-                    vtop->r = vtop[-1].r2;
-                }
-                /* Allocate second register. Here we rely on the fact that
-                   get_reg() tries first to free r2 of an SValue. */
-                r2 = get_reg(rc2);
-                load(r2, vtop);
-                vpop();
-                /* write second register */
-                vtop->r2 = r2;
-                vtop->type.t = original_type;
-            } else if ((vtop->r & VT_LVAL) && !is_float(vtop->type.t)) {
+            }
+	    if ((vtop->r & VT_LVAL) && !is_float(vtop->type.t)) {
                 int t1, t;
                 /* lvalue of scalar type : need to use lvalue type
                    because of possible cast */
@@ -1135,16 +1073,16 @@ static int reg_fret(int t)
 }
 
 /* expand long long on stack in two int registers */
-static void lexpand(void)
+ST_FUNC void lexpand(void)
 {
     int u;
 
-    u = vtop->type.t & (VT_DEFSIGN | VT_UNSIGNED);
-    gv(RC_INT);
+    u = vtop->type.t & VT_UNSIGNED;
     vdup();
-    vtop[0].r = vtop[-1].r2;
-    vtop[0].r2 = VT_CONST;
-    vtop[-1].r2 = VT_CONST;
+    vtop[0].type.t = VT_LLONG | u;
+    vpushi(32);
+    gen_op(TOK_SHR);
+    gv2(RC_INT, RC_INT);
     vtop[0].type.t = VT_INT | u;
     vtop[-1].type.t = VT_INT | u;
 }
@@ -1180,10 +1118,18 @@ ST_FUNC void lexpand_nr(void)
 /* build a long long from two ints */
 static void lbuild(int t)
 {
-    gv2(RC_INT, RC_INT);
-    vtop[-1].r2 = vtop[0].r;
-    vtop[-1].type.t = t;
-    vpop();
+    vswap();
+    vtop[0].type.t = t;
+    vpushi(32);
+    gen_op(TOK_SHL);
+    vswap();
+    vtop[0].type.t = t;
+    vpushi(32);
+    gen_op(TOK_SHL);
+    vpushi(32);
+    gen_op(TOK_SHR);
+    gen_op('+');
+    gv(RC_INT);
 }
 
 /* rotate n first stack elements to the bottom 
@@ -2076,7 +2022,6 @@ static void gen_cvt_ftoi1(int t)
         gfunc_call(1);
         vpushi(0);
         vtop->r = REG_IRET;
-        vtop->r2 = REG_LRET;
     } else {
         gen_cvt_ftoi(t);
     }
@@ -2795,7 +2740,6 @@ ST_FUNC void vstore(void)
 #ifndef TCC_TARGET_X86_64
             if ((ft & VT_BTYPE) == VT_LLONG) {
                 int addr_type = VT_INT, load_size = 4, load_type = VT_INT;
-#endif
                 vtop[-1].type.t = load_type;
                 store(r, vtop - 1);
                 vswap();
@@ -4382,7 +4326,6 @@ ST_FUNC void unary(void)
             next();
             sa = s->next; /* first parameter */
             nb_args = 0;
-            ret.r2 = VT_CONST;
             /* compute first implicit argument if a structure is returned */
             if ((s->type.t & VT_BTYPE) == VT_STRUCT) {
                 variadic = (s->c == FUNC_ELLIPSIS);
@@ -4420,19 +4363,7 @@ ST_FUNC void unary(void)
                 /* return in register */
                 if (is_float(ret.type.t)) {
                     ret.r = reg_fret(ret.type.t);
-#ifdef TCC_TARGET_X86_64
-                    if ((ret.type.t & VT_BTYPE) == VT_QFLOAT)
-                      ret.r2 = REG_QRET;
-#endif
                 } else {
-#ifndef TCC_TARGET_ARM64
-#ifdef TCC_TARGET_X86_64
-                    if ((ret.type.t & VT_BTYPE) == VT_QLONG)
-#else
-                    if ((ret.type.t & VT_BTYPE) == VT_LLONG)
-#endif
-                        ret.r2 = REG_LRET;
-#endif
                     ret.r = REG_IRET;
                 }
                 ret.c.i = 0;
@@ -4461,7 +4392,6 @@ ST_FUNC void unary(void)
             /* return value */
             for (r = ret.r + ret_nregs + !ret_nregs; r-- > ret.r;) {
                 vsetc(&ret.type, r, &ret.c);
-                vtop->r2 = ret.r2; /* Loop only happens when r2 is VT_CONST */
             }
 
             /* handle packed struct return */
