@@ -61,6 +61,7 @@ ST_DATA int *vla_sp_loc; /* Pointer to variable holding location to store stack 
 ST_DATA int vla_flags; /* VLA_* flags */
 
 ST_DATA SValue __vstack[1+VSTACK_SIZE], *vtop;
+ST_DATA RContents register_contents[NB_REGS];
 
 ST_DATA int const_wanted; /* true if constant wanted */
 ST_DATA int nocode_wanted; /* true if no code generation wanted for an expression */
@@ -574,6 +575,68 @@ ST_FUNC void end_special_use(int r)
     register_contents[r].special_use = 0;
 }
 
+ST_FUNC void cache_value(SValue *v, int r)
+{
+    if(r >= 0 && r<NB_REGS) {
+	register_contents[r].v = *v;
+    }
+}
+
+ST_FUNC void uncache_value_by_register(int r)
+{
+    if(r >= 0 && r<NB_REGS) {
+	register_contents[r].v.type.t = VT_VOID;
+	register_contents[r].v.r = VT_CONST;
+	register_contents[r].v.c.ull = 0;
+    }
+}
+
+ST_FUNC void uncache_value(SValue *v)
+{
+    int r;
+
+    while ((r = find_cached_value(v)) > 0) {
+	uncache_value_by_register(r);
+    }
+}
+
+ST_FUNC void uncache_values(void)
+{
+    int r;
+
+    for(r=0; r<NB_REGS; r++) {
+	uncache_value_by_register(r);
+    }
+}
+
+ST_FUNC int find_cached_value(SValue *v)
+{
+    int r;
+
+    for(r=0; r<NB_REGS; r++) {
+	/* never return registers, those are "cached" anyway */
+	if((v->r&VT_VALMASK) < VT_CONST)
+	    continue;
+
+        if((v->r&VT_LVAL) ^ (register_contents[r].v.r&VT_LVAL))
+            continue;
+
+	if((v->r&VT_VALMASK) == VT_LLOCAL &&
+	   (register_contents[r].v.r & VT_VALMASK) == VT_LLOCAL &&
+	   v->c.ul == register_contents[r].v.c.ul) {
+	    return r;
+	}
+
+	if((v->r&VT_VALMASK) == VT_LOCAL &&
+	   (register_contents[r].v.r & VT_VALMASK) == VT_LOCAL &&
+	   v->c.ul == register_contents[r].v.c.ul) {
+	    return r;
+	}
+    }
+
+    return -1;
+}
+
 /* save r to the memory stack, and mark it as being free */
 ST_FUNC void save_reg(int r)
 {
@@ -745,6 +808,7 @@ ST_FUNC int get_reg_nofree(RegSet rs)
 	    if(register_contents[r].special_use)
 		continue;
             save_reg(r);
+	    uncache_value_by_register(r);
             return r;
         }
     }

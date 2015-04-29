@@ -415,6 +415,13 @@ typedef struct AttributeDef {
     int alias_target;    /* token */
 } AttributeDef;
 
+/* register contents */
+typedef struct RContents {
+    SValue v;
+    unsigned short callee_saved_index;
+    int special_use; /* no longer available for gv() */
+} RContents;
+
 /* symbol management */
 typedef struct Sym {
     int v;    /* symbol token */
@@ -1230,6 +1237,12 @@ ST_FUNC void end_special_use(int);
 ST_FUNC int regset_has(RegSet, int);
 ST_FUNC RegSet regset_singleton(int);
 ST_FUNC RegSet regset_union(RegSet, RegSet);
+
+ST_FUNC void uncache_value_by_register(int r);
+ST_FUNC void uncache_value(SValue *);
+ST_FUNC void uncache_values(void);
+ST_FUNC void cache_value(SValue *, int);
+ST_FUNC int find_cached_value(SValue *v);
 
 ST_INLN int is_float(int t);
 ST_FUNC int ieee_finite(double d);

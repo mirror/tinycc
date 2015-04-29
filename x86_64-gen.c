@@ -799,6 +799,8 @@ void load(int r, SValue *sv)
     int v, t, ft, fc, fr, is_mem = 0;
     SValue v1;
 
+    uncache_value_by_register(r);
+
 #ifdef TCC_TARGET_PE
     SValue v2;
     sv = pe_getimport(sv, &v2);
@@ -874,6 +876,8 @@ void load(int r, SValue *sv)
             orex(bs, fr, r, b);
             gen_modrm(r, fr, sv->sym, fc, is_mem);
         }
+	uncache_value_by_register(r);
+	cache_value(sv, r);
     } else {
         if (v == VT_CONST) {
             if (fr & VT_SYM) {
@@ -2365,6 +2369,7 @@ void gen_opi(int op)
 {
     int r, fr, opc, c;
     int ll, uu, cc;
+    int uncache;
 
     ll = is64_type(vtop[-1].type.t);
     uu = (vtop[-1].type.t & VT_UNSIGNED) != 0;
@@ -2375,6 +2380,8 @@ void gen_opi(int op)
     case TOK_ADDC1: /* add with carry generation */
         opc = 0;
     gen_op8:
+	get_flags();
+	uncache = 1;
         if (cc && (!ll || (int)vtop->c.ll == vtop->c.ll)) {
 	get_flags();
             /* constant case */
@@ -2437,6 +2444,8 @@ void gen_opi(int op)
 	    }
         }
         vtop--;
+	if (uncache)
+	    uncache_value(&vtop[0]);
         if (op >= TOK_ULT && op <= TOK_GT) {
             vtop->r = VT_CMP;
             vtop->c.i = op;
@@ -2468,6 +2477,8 @@ void gen_opi(int op)
         orex(ll?64:32, fr, r, 0xaf0f); /* imul fr, r */
         o(0xc0 + REG_VALUE(fr) + REG_VALUE(r) * 8);
         vtop--;
+	uncache_value_by_register(r);
+	uncache_value(&vtop[0]);
         break;
     case TOK_SHL:
         opc = 4;
@@ -2497,6 +2508,8 @@ void gen_opi(int op)
             o(opc | REG_VALUE(r));
         }
         vtop--;
+	uncache_value_by_register(r);
+	uncache_value(&vtop[0]);
         break;
     case TOK_UDIV:
     case TOK_UMOD:
@@ -2523,6 +2536,7 @@ void gen_opi(int op)
         else
             r = TREG_RAX;
         vtop->r = r;
+	uncache_value(&vtop[0]);
         break;
     default:
         opc = 7;
@@ -2864,6 +2878,7 @@ void gen_cvt_ftof(int t)
             vtop->r = r;
         }
     }
+    uncache_value_by_register(vtop->r);
 }
 
 /* convert fp to int 't' type */
