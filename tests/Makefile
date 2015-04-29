@@ -118,7 +118,7 @@ test.ref: ../tests/tcctest.c
 	./tcctest.cc > $@
 
 # auto test
-test1 test1b: tcctest.c test.ref
+test1 test1b: ../tests/tcctest.c test.ref
 	@echo ------------ $@ ------------
 	$(TCC) $(SRCDIR)/tcctest.c -g -o tcctest1
 	$(TCC) -run $< > test.out1
@@ -134,14 +134,14 @@ test15: test.ref
 	diff -u test.ref test.out15
 
 # iterated test2 (compile tcc then compile tcctest.c !)
-test2 test2b: tcctest.c test.ref
+test2 test2b: ../tests/tcctest.c test.ref
 	@echo ------------ $@ ------------
 	$(TCC) $(RUN_TCC) $(RUN_TCC) $(SRCDIR)/tcctest.c -g -o tcctest2
 	$(TCC) $(RUN_TCC) $(RUN_TCC) -run $< > test.out2
 	@diff -u test.ref test.out2 && echo "Auto Test2 OK"
 
 # iterated test3 (compile tcc then compile tcc then compile tcctest.c !)
-test3 test3b: tcctest.c test.ref
+test3 test3b: ../tests/tcctest.c test.ref
 	@echo ------------ $@ ------------
 	$(TCC) $(RUN_TCC) $(RUN_TCC) $(RUN_TCC) $(SRCDIR)/tcctest.c -g -o tcctest3
 	$(TCC) $(RUN_TCC) $(RUN_TCC) $(RUN_TCC) -run $< > test.out3
