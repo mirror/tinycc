@@ -99,7 +99,7 @@ ST_INLN int is_float(int t)
 {
     int bt;
     bt = t & VT_BTYPE;
-    return bt == VT_LDOUBLE || bt == VT_DOUBLE || bt == VT_FLOAT || bt == VT_QFLOAT;
+    return bt == VT_LDOUBLE || bt == VT_DOUBLE || bt == VT_FLOAT;
 }
 
 /* we use our own 'finite' function to avoid potential problems with
@@ -959,9 +959,32 @@ ST_FUNC int gv(RegSet rc)
 #endif
             )
         {
-            r = get_reg(rc);
-#if defined(TCC_TARGET_ARM64) || defined(TCC_TARGET_X86_64)
-            if (((vtop->type.t & VT_BTYPE) == VT_QLONG) || ((vtop->type.t & VT_BTYPE) == VT_QFLOAT)) {
+	    r1 = find_cached_value(vtop);
+	    r = -1;
+
+	    if (0 && r1 != -1)
+		/* XXX understand why this is ever false */
+		if(regset_has(rc, r1)) {
+		    r = get_reg(regset_singleton(r1));
+
+		    vtop->r = r;
+
+		    return r;
+		}
+
+	    if (r == -1)
+		r = get_reg(rc);
+	    assert(r != -1);
+
+	    if(r1 != -1) {
+		if (r1 == r) {
+		    int i;
+		    for(i=0; i<r+1; i++)
+			g(0x90);
+		}
+	    }
+
+#ifndef TCC_TARGET_X86_64
                 int addr_type = VT_LLONG, load_size = 8, load_type = ((vtop->type.t & VT_BTYPE) == VT_QLONG) ? VT_LLONG : VT_DOUBLE;
 #else
             if ((vtop->type.t & VT_BTYPE) == VT_LLONG) {
@@ -1225,7 +1248,7 @@ static void gv_dup(void)
     SValue sv;
 
     t = vtop->type.t;
-    if ((t & VT_BTYPE) == VT_LLONG) {
+    if (0 && (t & VT_BTYPE) == VT_LLONG) {
         lexpand();
         gv_dup();
         vswap();
@@ -1243,6 +1266,7 @@ static void gv_dup(void)
         /* duplicate value */
 	RegSet rs = RC_INT;
         sv.type.t = VT_INT;
+        sv.type.t = ((t & VT_BTYPE) == VT_LLONG) ? t : VT_INT;
         if (is_float(t)) {
             rs = RC_FLOAT;
 #ifdef TCC_TARGET_X86_64
@@ -2265,8 +2289,6 @@ static void gen_cast(CType *type)
                 /* scalar to int */
                 if (sbt == VT_LLONG && !nocode_wanted) {
                     /* from long long: just take low order word */
-                    lexpand();
-                    vpop();
                 } 
                 /* if lvalue and single word type, nothing to do because
                    the lvalue already contains the real type size (see
@@ -2335,9 +2357,6 @@ ST_FUNC int type_size(CType *type, int *a)
     } else if (bt == VT_SHORT) {
         *a = 2;
         return 2;
-    } else if (bt == VT_QLONG || bt == VT_QFLOAT) {
-        *a = 8;
-        return 16;
     } else {
         /* char, void, function, _Bool */
         *a = 1;
@@ -2771,37 +2790,7 @@ ST_FUNC void vstore(void)
                 vswap();
             }
 #endif
-            rc = RC_INT;
-            if (is_float(ft)) {
-                rc = RC_FLOAT;
-#ifdef TCC_TARGET_X86_64
-                if ((ft & VT_BTYPE) == VT_LDOUBLE) {
-                    rc = RC_ST0;
-                } else if ((ft & VT_BTYPE) == VT_QFLOAT) {
-                    rc = RC_FRET;
-                }
-#endif
-            }
-            r = gv(rc);  /* generate value */
-            /* if lvalue was saved on stack, must read it */
-            if ((vtop[-1].r & VT_VALMASK) == VT_LLOCAL) {
-                SValue sv;
-                t = get_reg(RC_INT);
-#if defined(TCC_TARGET_ARM64) || defined(TCC_TARGET_X86_64)
-                sv.type.t = VT_PTR;
-#else
-                sv.type.t = VT_INT;
-#endif
-                sv.r = VT_LOCAL | VT_LVAL;
-                sv.c.ul = vtop[-1].c.ul;
-                load(t, &sv);
-                vtop[-1].r = t | VT_LVAL;
-            }
-            /* two word case handling : store second register at word + 4 (or +8 for x86-64)  */
-#if defined(TCC_TARGET_ARM64) || defined(TCC_TARGET_X86_64)
-            if (((ft & VT_BTYPE) == VT_QLONG) || ((ft & VT_BTYPE) == VT_QFLOAT)) {
-                int addr_type = VT_LLONG, load_size = 8, load_type = ((vtop->type.t & VT_BTYPE) == VT_QLONG) ? VT_LLONG : VT_DOUBLE;
-#else
+#ifndef TCC_TARGET_X86_64
             if ((ft & VT_BTYPE) == VT_LLONG) {
                 int addr_type = VT_INT, load_size = 4, load_type = VT_INT;
 #endif
@@ -2816,11 +2805,55 @@ ST_FUNC void vstore(void)
                 vtop->r |= VT_LVAL;
                 vswap();
                 vtop[-1].type.t = load_type;
-                /* XXX: it works because r2 is spilled last ! */
-                store(vtop->r2, vtop - 1);
-            } else {
-                store(r, vtop - 1);
-            }
+		/* QS QS LD1 LD2 */
+
+		vrotb(3);
+
+		/* LD1 LD2 QS */
+		qexpand();
+
+		/* QS LD1 LD2 LS1 LS2 */
+		vrott(3);
+		/* QS LD1 LS2 LD2 LS1 */
+		vrotb(4);
+		/* QS LS2 LD2 LS1 LD1 */
+		vstore();
+		vtop--;
+		/* QS LD1 LS1 */
+		vstore();
+		/* QS LS1 */
+		vswap();
+            } else
+#endif
+	    {
+		rc = RC_INT;
+		if (is_float(ft)) {
+		    rc = RC_FLOAT;
+#ifdef TCC_TARGET_X86_64
+		    if ((ft & VT_BTYPE) == VT_LDOUBLE) {
+			rc = RC_ST0;
+		    }
+#endif
+		}
+		r = gv(rc);  /* generate value */
+		/* if lvalue was saved on stack, must read it */
+		if ((vtop[-1].r & VT_VALMASK) == VT_LLOCAL) {
+		    SValue sv;
+		    t = get_reg(RC_INT);
+#ifdef TCC_TARGET_X86_64
+		    sv.type.t = VT_PTR;
+#else
+		    sv.type.t = VT_INT;
+#endif
+		    sv.r = VT_LOCAL | VT_LVAL;
+		    sv.c.ul = vtop[-1].c.ul;
+		    load(t, &sv);
+		    vtop[-1].r = t | VT_LVAL;
+		}
+		cache_value(&vtop[-1], r);
+	    }
+
+	    store(r, vtop - 1);
         }
         vswap();
         vtop--; /* NOT vpop() because on x86 it would flush the fp stack */
@@ -5651,11 +5684,14 @@ static void init_putv(CType *type, Section *sec, unsigned long c,
 }
 
 /* put zeros for variable based init */
-static void init_putz(CType *t, Section *sec, unsigned long c, int size)
+static void init_putz(CType *t, Section *sec, unsigned long long c, int size)
 {
     if (sec) {
         /* nothing to do because globals are already set to zero */
     } else {
+	CType ty;
+	ty.t = VT_LLONG;
+	ty.ref = NULL;
         vpush_global_sym(&func_old_type, TOK_memset);
         vseti(VT_LOCAL, c);
 #ifdef TCC_TARGET_ARM
