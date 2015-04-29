@@ -745,7 +745,7 @@ ST_FUNC int get_reg_nofree(RegSet rs)
         }
     }
 
-    assert(0);
+    TCC_ASSERT(0);
     /* Should never come here */
     return -1;
 }
