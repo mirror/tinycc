@@ -672,12 +672,6 @@ ST_FUNC int get_reg_nofree(RegSet rs)
     int r;
     SValue *p;
 
-    if (last_r == -1) {
-	for(r=0; r<NB_REGS; r++) {
-	    register_contents[r].v.type.t = VT_VOID;
-	}
-    }
-
     /* find a free register that doesn't have cached data in it */
     for(r=0;r<NB_REGS;r++) {
 	if (regset_has(rs, r)) {
@@ -685,9 +679,7 @@ ST_FUNC int get_reg_nofree(RegSet rs)
                 if ((p->r & VT_VALMASK) == r)
                     goto notfound1;
             }
-	    if ((register_contents[r].v.type.t & VT_BTYPE) == VT_VOID)
-		goto notfound1;
-	    if (register_contents[r].special_use)
+	    if (regset_has(special_use_regset, r))
 		goto notfound1;
 	    last_r = r;
             return r;
@@ -702,7 +694,7 @@ ST_FUNC int get_reg_nofree(RegSet rs)
                 if ((p->r & VT_VALMASK) == r)
                     goto notfound2;
             }
-	    if (register_contents[r].special_use)
+	    if (regset_has(special_use_regset, r))
 		goto notfound2;
 	    last_r = r;
 	    uncache_value_by_register(r);
@@ -718,28 +710,26 @@ ST_FUNC int get_reg_nofree(RegSet rs)
                 if ((p->r & VT_VALMASK) == r)
                     goto notfound3;
             }
-	    if (register_contents[r].special_use)
+	    if (regset_has(special_use_regset, r))
 		goto notfound3;
 	    last_r = r;
-	    uncache_value_by_register(r);
             return r;
         }
     notfound3: ;
     }
 
-     for(r=0;r<NB_REGS;r++) {
+    for(r=0;r<NB_REGS;r++) {
 	if (regset_has(rs, r)) {
-             for(p=vstack;p<=vtop;p++) {
-                 if ((p->r & VT_VALMASK) == r)
+            for(p=vstack;p<=vtop;p++) {
+                if ((p->r & VT_VALMASK) == r)
                     goto notfound;
-             }
-	     if (register_contents[r].special_use)
-		 goto notfound;
-	     uncache_value_by_register(r);
-             return r;
-         }
-    notfound: ;
-     }
+            }
+	    if (regset_has(special_use_regset, r))
+                goto notfound;
+            return r;
+        }
+      notfound: ;
+    }
 
     
     /* no register left : free the first one on the stack (VERY
@@ -748,7 +738,7 @@ ST_FUNC int get_reg_nofree(RegSet rs)
     for(p=vstack;p<=vtop;p++) {
         r = p->r & VT_VALMASK;
 	if (r < VT_CONST && (regset_has(rs, r))) {
-	    if(register_contents[r].special_use)
+	    if (regset_has(special_use_regset, r))
 		continue;
             save_reg(r);
             return r;
