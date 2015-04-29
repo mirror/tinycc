@@ -524,6 +524,8 @@ ST_FUNC void vdup(void)
     vpushv(vtop);
 }
 
+ST_DATA RegSet special_use_regset;
+
 /* unlike start_special_use, this function silently accepts registers
    that are already in special use. */
 ST_FUNC void start_special_use_regset(RegSet rs)
@@ -540,7 +542,7 @@ ST_FUNC void start_special_use_regset(RegSet rs)
 	if(!regset_has(rs, r))
 	    continue;
 
-	register_contents[r].special_use = 1;
+        special_use_regset = regset_union(special_use_regset, regset_singleton(r));
     }
 }
 
@@ -552,7 +554,7 @@ ST_FUNC void end_special_use_regset(RegSet rs)
 	if(!regset_has(rs, r))
 	    continue;
 
-	register_contents[r].special_use = 0;
+        special_use_regset = regset_difference(special_use_regset, regset_singleton(r));
     }
 }
 
@@ -560,19 +562,19 @@ ST_FUNC void start_special_use(int r)
 {
     SValue *p;
 
-    if(register_contents[r].special_use)
+    if (regset_has(special_use_regset, r))
 	tcc_error("register already in special use");
 
     for(p=vstack;p<=vtop;p++) {
         if ((p->r & VT_VALMASK) == r)
 	    tcc_error("register already in ordinary use");
     }
-    register_contents[r].special_use = 1;
+    special_use_regset = regset_union(special_use_regset, regset_singleton(r));
 }
 
 ST_FUNC void end_special_use(int r)
 {
-    register_contents[r].special_use = 0;
+    special_use_regset = regset_difference(special_use_regset, regset_singleton(r));
 }
 
 /* save r to the memory stack, and mark it as being free */
