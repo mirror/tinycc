@@ -647,13 +647,17 @@ static void gcall_or_jmp(int is_jmp)
         }
         oad(0xe8 + is_jmp, vtop->c.ul - 4); /* call/jmp im */
     } else {
-        /* otherwise, indirect call */
-        r = TREG_R11;
+        /* otherwise, indirect call. */
+        r = get_reg(RC_INT);
+	save_reg(r);
+	start_special_use(r);
         load(r, vtop);
         o(0x41); /* REX */
         o(0xff); /* call/jmp *r */
         o(0xd0 + REG_VALUE(r) + (is_jmp << 4));
+	end_special_use(r);
     }
+    commit_instructions(); /* all caller-saved registers have been clobbered */
 }
 
 #if defined(CONFIG_TCC_BCHECK)
@@ -750,11 +754,7 @@ static const uint8_t arg_regs[REGN] = {
 /* Prepare arguments in R10 and R11 rather than RCX and RDX
    because gv() will not ever use these */
 static int arg_prepare_reg(int idx) {
-  if (idx == 0 || idx == 1)
-      /* idx=0: r10, idx=1: r11 */
-      return idx + 10;
-  else
-      return arg_regs[idx];
+    return arg_regs[idx];
 }
 
 static int func_scratch;
@@ -1265,16 +1265,13 @@ ST_FUNC int gfunc_sret(CType *vt, int variadic, CType *ret, int *ret_align, int 
 }
 
 #define REGN 6
+#define REGN_SSE 8
 static const uint8_t arg_regs[REGN] = {
     TREG_RDI, TREG_RSI, TREG_RDX, TREG_RCX, TREG_R8, TREG_R9
 };
 
 static int arg_prepare_reg(int idx) {
-  if (idx == 2 || idx == 3)
-      /* idx=2: r10, idx=3: r11 */
-      return idx + 8;
-  else
-      return arg_regs[idx];
+    return arg_regs[idx];
 }
 
 /* Align vtop[-i] to an eight-byte boundary.
@@ -1334,6 +1331,7 @@ void gfunc_call(int nb_args)
     int *size = alloca(nb_args * sizeof *size);
     int *align = alloca(nb_args * sizeof *align);
 
+    assert((vtop[-nb_args].type.t & VT_BTYPE) == VT_FUNC);
     /* calculate the number of integer/float register arguments */
     for(i = nb_args - 1; i >= 0; i--) {
         int fregs, iregs;
@@ -1495,6 +1493,7 @@ void gfunc_call(int nb_args)
     save_regs(0); /* save used temporary registers */
 
     /* then, we prepare register passing arguments.
+                r = get_reg(RC_INT);
        Note that we cannot set RDX and RCX in this loop because gv()
        may break these temporary registers. Let's use R10 and R11
        instead of them */
@@ -1580,14 +1579,7 @@ void gfunc_call(int nb_args)
         }
         vtop--;
     }
-    assert(gen_reg == 0);
-    assert(sse_reg == 0);
-
-    /* We shouldn't have many operands on the stack anymore, but the
-       call address itself is still there, and it might be in %eax
-       (or edx/ecx) currently, which the below writes would clobber.
-       So evict all remaining operands here.  */
-    save_regs(0);
+    assert((vtop->type.t & VT_BTYPE) == VT_FUNC);
 
     /* Copy R10 and R11 into RDX and RCX, respectively */
     if (nb_reg_args > 2) {
@@ -1596,11 +1588,25 @@ void gfunc_call(int nb_args)
             o(0xd9894c); /* mov %r11, %rcx */
         }
     }
+    if (nb_sse_args)
+      oad(0xb8, nb_sse_args < 8 ? nb_sse_args : 8); /* mov nb_sse_args, %eax */
+    else {
+	/* we used to clear eax here, but since it's just an upper
+	   bound, we can get away with not doing so. We should really
+	   detect varargs/K&R prototypes and clear %eax only for
+	   them. */
+	//o(0xc031); /*	   xor %eax,%eax */
+    }
+    save_regset(RC_CALLER_SAVED);
+    start_special_use_regset(RC_ARGUMENTS);
+    check_baddies(-1, 0);
 
-    oad(0xb8, nb_sse_args < 8 ? nb_sse_args : 8); /* mov nb_sse_args, %eax */
     gcall_or_jmp(0);
+    end_special_use_regset(RC_ARGUMENTS);
+
     if (args_size)
         gadd_sp(args_size);
+    assert((vtop->type.t & VT_BTYPE) == VT_FUNC);
     vtop--;
 }
 
