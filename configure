@@ -387,7 +387,7 @@ else
 fi
 
 # a final configuration tuning
-W_OPTIONS="declaration-after-statement"
+W_OPTIONS="error declaration-after-statement"
 for i in $W_OPTIONS; do
     O_PRESENT="$($cc -v --help 2>&1 | grep -- -W$i)"
     if test -n "$O_PRESENT"; then  CFLAGS="$CFLAGS -W$i"; fi
