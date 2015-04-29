@@ -2399,21 +2399,59 @@ void gen_opi(int op)
             r = gv(RC_INT);
             vswap();
             c = vtop->c.i;
-            if (c == (char)c) {
-                /* XXX: generate inc and dec for smaller code ? */
-                orex(ll, r, 0, 0x83);
+	    /* lea 0xXXXX(r), or */
+	    if (opc == 0) {
+		int or = get_reg(RC_INT);
+
+		uncache_value_by_register(or);
+
+		orex(ll?64:32, r, or, 0x8d);
+		oad(0x80 | (REG_VALUE(or) << 3) | REG_VALUE(r), c);
+
+		vtop[-1].r = or;
+		cache_value(&vtop[0], vtop[0].r);
+		uncache_values();
+		uncache = 0;
+	    } else if ((c == 1 && opc == 0) || (c == -1 && opc == 5)) {
+                /* inc r */
+                orex(ll?64:32, r, 0, 0xff);
+                o(0xc0 + REG_VALUE(r));
+		uncache_value_by_register(r);
+            } else if ((c == -1 && opc == 0) || (c == 1 && opc == 5)) {
+                /* dec r */
+                orex(ll?64:32, r, 0, 0xff);
+                o(0xc8 + REG_VALUE(r));
+		uncache_value_by_register(r);
+            } else if (c == (char)c) {
+                orex(ll?64:32, r, 0, 0x83);
                 o(0xc0 | (opc << 3) | REG_VALUE(r));
                 g(c);
+		uncache_value_by_register(r);
             } else {
-                orex(ll, r, 0, 0x81);
+                orex(ll?64:32, r, 0, 0x81);
                 oad(0xc0 | (opc << 3) | REG_VALUE(r), c);
+		uncache_value_by_register(r);
             }
         } else {
-            gv2(RC_INT, RC_INT);
-            r = vtop[-1].r;
-            fr = vtop[0].r;
-            orex(ll, r, fr, (opc << 3) | 0x01);
-            o(0xc0 + REG_VALUE(r) + REG_VALUE(fr) * 8);
+	    if (opc == 0) {
+		int or = get_reg(RC_INT);
+		gv2(RC_INT, RC_INT);
+		r = vtop[-1].r;
+		fr = vtop[0].r;
+		orex4(ll, r, fr, or, 0x8d); /* XXX */
+		o(0x04 + REG_VALUE(or) * 8);
+		g(0x00 + REG_VALUE(r) * 8 + REG_VALUE(fr));
+
+		vtop[-1].r = or;
+		uncache = 0;
+	    } else {
+		gv2(RC_INT, RC_INT);
+		r = vtop[-1].r;
+		fr = vtop[0].r;
+		orex(ll?64:32, r, fr, (opc << 3) | 0x01);
+		o(0xc0 + REG_VALUE(r) + REG_VALUE(fr) * 8);
+		uncache_value_by_register(r);
+	    }
         }
         vtop--;
         if (op >= TOK_ULT && op <= TOK_GT) {
