@@ -524,6 +524,57 @@ ST_FUNC void vdup(void)
     vpushv(vtop);
 }
 
+/* unlike start_special_use, this function silently accepts registers
+   that are already in special use. */
+ST_FUNC void start_special_use_regset(RegSet rs)
+{
+    int r;
+    SValue *p;
+
+    for(p=vstack;p<=vtop;p++) {
+        if (regset_has(rs, (p->r & VT_VALMASK)))
+	    tcc_error("register already in ordinary use");
+    }
+
+    for(r=0; r<NB_REGS; r++) {
+	if(!regset_has(rs, r))
+	    continue;
+
+	register_contents[r].special_use = 1;
+    }
+}
+
+ST_FUNC void end_special_use_regset(RegSet rs)
+{
+    int r;
+
+    for(r=0; r<NB_REGS; r++) {
+	if(!regset_has(rs, r))
+	    continue;
+
+	register_contents[r].special_use = 0;
+    }
+}
+
+ST_FUNC void start_special_use(int r)
+{
+    SValue *p;
+
+    if(register_contents[r].special_use)
+	tcc_error("register already in special use");
+
+    for(p=vstack;p<=vtop;p++) {
+        if ((p->r & VT_VALMASK) == r)
+	    tcc_error("register already in ordinary use");
+    }
+    register_contents[r].special_use = 1;
+}
+
+ST_FUNC void end_special_use(int r)
+{
+    register_contents[r].special_use = 0;
+}
+
 /* save r to the memory stack, and mark it as being free */
 ST_FUNC void save_reg(int r)
 {
@@ -596,7 +647,7 @@ ST_FUNC int get_reg_ex(int rc, int rc2)
     SValue *p;
     
     for(r=0;r<NB_REGS;r++) {
-        if (reg_classes[r] & rc2) {
+        if (regset_has(rc2, r)) {
             int n;
             n=0;
             for(p = vstack; p <= vtop; p++) {
@@ -612,42 +663,123 @@ ST_FUNC int get_reg_ex(int rc, int rc2)
 }
 #endif
 
-/* find a free register of class 'rc'. If none, save one register */
-ST_FUNC int get_reg(int rc)
+/* find a free register in set 'rs'. If none, save one register */
+ST_FUNC int get_reg_nofree(RegSet rs)
 {
+    static int last_r = -1;
     int r;
     SValue *p;
 
-    /* find a free register */
+    if (last_r == -1) {
+	for(r=0; r<NB_REGS; r++) {
+	    register_contents[r].v.type.t = VT_VOID;
+	}
+    }
+
+    /* find a free register that doesn't have cached data in it */
     for(r=0;r<NB_REGS;r++) {
-        if (reg_classes[r] & rc) {
+	if (regset_has(rs, r)) {
             for(p=vstack;p<=vtop;p++) {
-                if ((p->r & VT_VALMASK) == r ||
-                    (p->r2 & VT_VALMASK) == r)
-                    goto notfound;
+                if ((p->r & VT_VALMASK) == r)
+                    goto notfound1;
             }
+	    if ((register_contents[r].v.type.t & VT_BTYPE) == VT_VOID)
+		goto notfound1;
+	    if (register_contents[r].special_use)
+		goto notfound1;
+	    last_r = r;
             return r;
         }
-    notfound: ;
+    notfound1: ;
     }
+
+    /* find a free register */
+    for(r=last_r+1;r<NB_REGS;r++) {
+	if (regset_has(rs, r)) {
+            for(p=vstack;p<=vtop;p++) {
+                if ((p->r & VT_VALMASK) == r)
+                    goto notfound2;
+            }
+	    if (register_contents[r].special_use)
+		goto notfound2;
+	    last_r = r;
+	    uncache_value_by_register(r);
+            return r;
+        }
+    notfound2: ;
+    }
+
+    /* find a free register */
+    for(r=0;r<=last_r;r++) {
+	if (regset_has(rs, r)) {
+            for(p=vstack;p<=vtop;p++) {
+                if ((p->r & VT_VALMASK) == r)
+                    goto notfound3;
+            }
+	    if (register_contents[r].special_use)
+		goto notfound3;
+	    last_r = r;
+	    uncache_value_by_register(r);
+            return r;
+        }
+    notfound3: ;
+    }
+
+     for(r=0;r<NB_REGS;r++) {
+	if (regset_has(rs, r)) {
+             for(p=vstack;p<=vtop;p++) {
+                 if ((p->r & VT_VALMASK) == r)
+                    goto notfound;
+             }
+	     if (register_contents[r].special_use)
+		 goto notfound;
+	     uncache_value_by_register(r);
+             return r;
+         }
+    notfound: ;
+     }
+
     
     /* no register left : free the first one on the stack (VERY
        IMPORTANT to start from the bottom to ensure that we don't
        spill registers used in gen_opi()) */
     for(p=vstack;p<=vtop;p++) {
-        /* look at second register (if long long) */
-        r = p->r2 & VT_VALMASK;
-        if (r < VT_CONST && (reg_classes[r] & rc))
-            goto save_found;
         r = p->r & VT_VALMASK;
-        if (r < VT_CONST && (reg_classes[r] & rc)) {
-        save_found:
+	if (r < VT_CONST && (regset_has(rs, r))) {
+	    if(register_contents[r].special_use)
+		continue;
             save_reg(r);
             return r;
         }
     }
-    /* Should never comes here */
+
+    assert(0);
+    /* Should never come here */
     return -1;
+}
+
+/* find a free register in set 'rs'. If none, save one register */
+ST_FUNC int get_reg(RegSet rs)
+{
+    int r;
+
+    r = get_reg_nofree(rs);
+    uncache_value_by_register(r);
+
+    return r;
+}
+
+ST_FUNC void save_regset(RegSet rs)
+{
+    int r;
+    SValue *p;
+    for(p = vstack;p <= vtop; p++) {
+        r = p->r & VT_VALMASK;
+        if (r < VT_CONST) {
+	    if (regset_has(rs, r))
+		save_reg(r);
+        }
+    }
 }
 
 /* save registers up to (vtop - n) stack entry */
@@ -724,7 +856,7 @@ static void gbound(void)
 /* store vtop a register belonging to class 'rc'. lvalues are
    converted to values. Cannot be used if cannot be converted to
    register value (such as structures). */
-ST_FUNC int gv(int rc)
+ST_FUNC int gv(RegSet rc)
 {
     int r, bit_pos, bit_size, size, align, i;
     int rc2;
@@ -923,10 +1055,11 @@ ST_FUNC int gv(int rc)
 }
 
 /* generate vtop[-1] and vtop[0] in resp. classes rc1 and rc2 */
-ST_FUNC void gv2(int rc1, int rc2)
+ST_FUNC void gv2(RegSet rc1, RegSet rc2)
 {
     int v;
 
+    /* FIXME: when is a regset more generic than another regset? */
     /* generate more generic register first. But VT_JMP or VT_CMP
        values must be generated first in all cases to avoid possible
        reload errors */
@@ -955,8 +1088,8 @@ ST_FUNC void gv2(int rc1, int rc2)
 }
 
 #ifndef TCC_TARGET_ARM64
+static int get_rc_fret(int t)
 /* wrapper around RC_FRET to return a register by type */
-static int rc_fret(int t)
 {
 #ifdef TCC_TARGET_X86_64
     if (t == VT_LDOUBLE) {
@@ -1088,7 +1221,7 @@ ST_FUNC void vpop(void)
    register */
 static void gv_dup(void)
 {
-    int rc, t, r, r1;
+    int t, r, r1;
     SValue sv;
 
     t = vtop->type.t;
@@ -1108,19 +1241,19 @@ static void gv_dup(void)
         vswap();
     } else {
         /* duplicate value */
-        rc = RC_INT;
+	RegSet rs = RC_INT;
         sv.type.t = VT_INT;
         if (is_float(t)) {
-            rc = RC_FLOAT;
+            rs = RC_FLOAT;
 #ifdef TCC_TARGET_X86_64
             if ((t & VT_BTYPE) == VT_LDOUBLE) {
-                rc = RC_ST0;
+                rs = RC_ST0;
             }
 #endif
             sv.type.t = t;
         }
-        r = gv(rc);
-        r1 = get_reg(rc);
+        r = gv(rs);
+        r1 = get_reg(rs);
         sv.r = r;
         sv.c.ul = 0;
         load(r1, &sv); /* move r to r1 */
@@ -4562,9 +4695,9 @@ static void expr_cond(void)
 #endif
                 }
                 else
-                    rc = RC_INT;
-                    gv(rc);
-                    save_regs(1);
+                    rc = regset_union(RC_FLAGS, RC_INT); /* XXX only where we have flags */
+                gv(rc);
+                save_regs(1);
             }
             if (tok == ':' && gnu_ext) {
                 gv_dup();
@@ -4646,7 +4779,7 @@ static void expr_cond(void)
             } else if ((type.t & VT_BTYPE) == VT_LLONG) {
                 /* for long longs, we use fixed registers to avoid having
                    to handle a complicated move */
-                rc = RC_IRET; 
+                rc = RC_IRET;
             }
             
             r2 = gv(rc);
@@ -4993,7 +5126,7 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
                         /* We assume that when a structure is returned in multiple
                            registers, their classes are consecutive values of the
                            suite s(n) = 2^n */
-                        r = rc_fret(ret_type.t) << i;
+                        r = get_rc_fret(ret_type.t) << i;
 
                         vdup();
                         vtop->c.i += off;
@@ -5003,7 +5136,7 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
                     }
 #else
                     if (is_float(ret_type.t))
-                        r = rc_fret(ret_type.t);
+                        r = get_rc_fret(ret_type.t);
                     else
                         r = RC_IRET;
 
@@ -5021,7 +5154,7 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
 #endif
                 }
             } else if (is_float(func_vt.t)) {
-                gv(rc_fret(func_vt.t));
+                gv(get_rc_fret(func_vt.t));
             } else {
                 gv(RC_IRET);
             }

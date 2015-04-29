@@ -44,31 +44,36 @@ typedef struct {
 } RegArgs;
 #endif
 
+ST_DATA const RegSet RC_INT;
+ST_DATA const RegSet RC_FLOAT;
+ST_DATA const RegSet RC_RAX;
+ST_DATA const RegSet RC_RCX;
+ST_DATA const RegSet RC_RDX;
+ST_DATA const RegSet RC_ST0;
+ST_DATA const RegSet RC_R8;
+ST_DATA const RegSet RC_R9;
+ST_DATA const RegSet RC_R10;
+ST_DATA const RegSet RC_R11;
+ST_DATA const RegSet RC_XMM0;
+ST_DATA const RegSet RC_XMM1;
+ST_DATA const RegSet RC_XMM2;
+ST_DATA const RegSet RC_XMM3;
+ST_DATA const RegSet RC_XMM4;
+ST_DATA const RegSet RC_XMM5;
+ST_DATA const RegSet RC_XMM6;
+ST_DATA const RegSet RC_XMM7;
+ST_DATA const RegSet RC_FLAGS;
+ST_DATA const RegSet RC_CALLER_SAVED;
+ST_DATA const RegSet RC_CALLEE_SAVED;
+
+#define RC_IRET RC_RAX
+#define RC_FRET RC_XMM0
+#define RC_LRET RC_RDX
+#define RC_QRET RC_XMM1
+
 /* a register can belong to several classes. The classes must be
    sorted from more general to more precise (see gv2() code which does
    assumptions on it). */
-#define RC_INT     0x0001 /* generic integer register */
-#define RC_FLOAT   0x0002 /* generic float register */
-#define RC_RAX     0x0004
-#define RC_RCX     0x0008
-#define RC_RDX     0x0010
-#define RC_ST0     0x0080 /* only for long double */
-#define RC_R8      0x0100
-#define RC_R9      0x0200
-#define RC_R10     0x0400
-#define RC_R11     0x0800
-#define RC_XMM0    0x1000
-#define RC_XMM1    0x2000
-#define RC_XMM2    0x4000
-#define RC_XMM3    0x8000
-#define RC_XMM4    0x10000
-#define RC_XMM5    0x20000
-#define RC_XMM6    0x40000
-#define RC_XMM7    0x80000
-#define RC_IRET    RC_RAX /* function return: integer register */
-#define RC_LRET    RC_RDX /* function return: second integer register */
-#define RC_FRET    RC_XMM0 /* function return: float register */
-#define RC_QRET    RC_XMM1 /* function return: second float register */
 
 /* pretty names for the registers */
 enum {
@@ -139,39 +144,46 @@ enum {
 #include "tcc.h"
 #include <assert.h>
 
-ST_DATA const int reg_classes[NB_REGS] = {
-    /* eax */ RC_INT | RC_RAX,
-    /* ecx */ RC_INT | RC_RCX,
-    /* edx */ RC_INT | RC_RDX,
-    0,
-    0,
-    0,
-    0,
-    0,
-    RC_R8,
-    RC_R9,
-    RC_R10,
-    RC_R11,
-    0,
-    0,
-    0,
-    0,
-    /* xmm0 */ RC_FLOAT | RC_XMM0,
-    /* xmm1 */ RC_FLOAT | RC_XMM1,
-    /* xmm2 */ RC_FLOAT | RC_XMM2,
-    /* xmm3 */ RC_FLOAT | RC_XMM3,
-    /* xmm4 */ RC_FLOAT | RC_XMM4,
-    /* xmm5 */ RC_FLOAT | RC_XMM5,
-    /* xmm6 an xmm7 are included so gv() can be used on them,
-       but they are not tagged with RC_FLOAT because they are
-       callee saved on Windows */
-    RC_XMM6,
-    RC_XMM7,
-    /* st0 */ RC_ST0
-};
+ST_DATA const RegSet RC_INT   = 0x000fc7; /* this must contain %r11 or calls won't work */
+ST_DATA const RegSet RC_FLOAT = 0xff0000;
+ST_DATA const RegSet RC_RAX   = 1 <<  0;
+ST_DATA const RegSet RC_RCX   = 1 <<  1;
+ST_DATA const RegSet RC_RDX   = 1 <<  2;
+ST_DATA const RegSet RC_ST0   = 1 << 24;
+ST_DATA const RegSet RC_R8    = 1 <<  8;
+ST_DATA const RegSet RC_R9    = 1 <<  9;
+ST_DATA const RegSet RC_R10   = 1 << 10;
+ST_DATA const RegSet RC_R11   = 1 << 11;
+ST_DATA const RegSet RC_XMM0  = 1 << 16;
+ST_DATA const RegSet RC_XMM1  = 1 << 17;
+ST_DATA const RegSet RC_XMM2  = 1 << 18;
+ST_DATA const RegSet RC_XMM3  = 1 << 19;
+ST_DATA const RegSet RC_XMM4  = 1 << 20;
+ST_DATA const RegSet RC_XMM5  = 1 << 21;
+ST_DATA const RegSet RC_XMM6  = 1 << 22;
+ST_DATA const RegSet RC_XMM7  = 1 << 23;
+ST_DATA const RegSet RC_FLAGS = 1L<< 32;
+ST_DATA const RegSet RC_CALLEE_SAVED = 0x000000038;
+ST_DATA const RegSet RC_CALLER_SAVED = 0x101ff0fc7;
+ST_DATA const RegSet RC_ARGUMENTS    = 0x101ff03c7;
 
 static unsigned long func_sub_sp_offset;
 static int func_ret_sub;
+
+ST_FUNC int regset_has(RegSet rs, int reg)
+{
+    return ((1LL<<reg) & rs) != 0;
+}
+
+ST_FUNC RegSet regset_singleton(int reg)
+{
+    return 1LL << reg;
+}
+
+ST_FUNC RegSet regset_union(RegSet rs1, RegSet rs2)
+{
+    return rs1|rs2;
+}
 
 /* XXX: make it faster ? */
 void g(int c)
@@ -413,7 +425,7 @@ void load(int r, SValue *sv)
             v1.r = VT_LOCAL | VT_LVAL;
             v1.c.ul = fc;
             fr = r;
-            if (!(reg_classes[fr] & (RC_INT|RC_R11)))
+            if (!(regset_has(regset_union(RC_INT, RC_R11), r)))
                 fr = get_reg(RC_INT);
             load(fr, &v1);
         }
@@ -873,6 +885,7 @@ void gfunc_call(int nb_args)
             } else {
                 d = arg_prepare_reg(arg);
                 gen_offs_sp(0x8d, d, struct_size);
+		start_special_use(d);
             }
             struct_size += size;
         } else {
@@ -890,6 +903,7 @@ void gfunc_call(int nb_args)
                     o(0x66);
                     orex(1,d,0, 0x7e0f);
                     o(0xc0 + REG_VALUE(d));
+		    start_special_use(d);
                 }
             } else {
                 if (bt == VT_STRUCT) {
@@ -905,6 +919,7 @@ void gfunc_call(int nb_args)
                     d = arg_prepare_reg(arg);
                     orex(1,d,r,0x89); /* mov */
                     o(0xc0 + REG_VALUE(r) * 8 + REG_VALUE(d));
+		    start_special_use(d);
                 }
             }
         }
@@ -1394,8 +1409,8 @@ void gfunc_call(int nb_args)
                 o(0x48);
                 oad(0xec81, size[i]); /* sub $xxx, %rsp */
                 /* generate structure store */
-                r = get_reg(RC_INT);
                 orex(1, r, 0, 0x89); /* mov %rsp, r */
+                r = get_reg(RC_INT);
                 o(0xe0 + REG_VALUE(r));
                 vset(&vtop->type, r | VT_LVAL, 0);
                 vswap();
@@ -1459,7 +1474,6 @@ void gfunc_call(int nb_args)
                 o(0x48);
                 oad(0xec81, size[i]); /* sub $xxx, %rsp */
                 /* generate structure store */
-                r = get_reg(RC_INT);
                 orex(1, r, 0, 0x89); /* mov %rsp, r */
                 o(0xe0 + REG_VALUE(r));
                 vset(&vtop->type, r | VT_LVAL, 0);
@@ -1558,6 +1572,8 @@ void gfunc_call(int nb_args)
                 d = arg_prepare_reg(gen_reg);
                 orex(1,d,r,0x89); /* mov */
                 o(0xc0 + REG_VALUE(r) * 8 + REG_VALUE(d));
+                get_reg(regset_singleton(d));
+                start_special_use(d);
             } else {
                 assert(0);
             }
@@ -2020,7 +2036,7 @@ void gen_opl(int op)
 void gen_opf(int op)
 {
     int a, ft, fc, swapped, r;
-    int float_type =
+    RegSet float_type =
         (vtop->type.t & VT_BTYPE) == VT_LDOUBLE ? RC_ST0 : RC_FLOAT;
 
     /* convert constants to memory references */
