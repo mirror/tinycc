@@ -1273,6 +1273,7 @@ ST_FUNC void indir(void);
 ST_FUNC void unary(void);
 ST_FUNC void expr_prod(void);
 ST_FUNC void expr_sum(void);
+ST_FUNC void gaddrof(void);
 ST_FUNC void gexpr(void);
 ST_FUNC int expr_const(void);
 ST_FUNC void gen_inline_functions(void);
