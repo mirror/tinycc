@@ -882,6 +882,8 @@ ST_FUNC int gv(RegSet rc)
         gen_op(TOK_SAR);
         r = gv(rc);
     } else {
+        int r1 = -1;
+
         if (is_float(vtop->type.t) && 
             (vtop->r & (VT_VALMASK | VT_LVAL)) == VT_CONST) {
             Sym *sym;
@@ -930,8 +932,6 @@ ST_FUNC int gv(RegSet rc)
 
         r = vtop->r & VT_VALMASK;
 
-        int r1 = -1;
-
         /* need to reload if:
            - constant
            - lvalue (need to dereference pointer)
@@ -965,18 +965,6 @@ ST_FUNC int gv(RegSet rc)
 		}
 	    }
 
-#ifndef TCC_TARGET_X86_64
-                int addr_type = VT_LLONG, load_size = 8, load_type = ((vtop->type.t & VT_BTYPE) == VT_QLONG) ? VT_LLONG : VT_DOUBLE;
-#else
-            if ((vtop->type.t & VT_BTYPE) == VT_LLONG) {
-                int addr_type = VT_INT, load_size = 4, load_type = VT_INT;
-                unsigned long long ll;
-#endif
-                int r2, original_type;
-                original_type = vtop->type.t;
-                /* two register type load : expand to two words
-                   temporarily */
-            }
 	    if ((vtop->r & VT_LVAL) && !is_float(vtop->type.t)) {
                 int t1, t;
                 /* lvalue of scalar type : need to use lvalue type
@@ -1006,6 +994,41 @@ ST_FUNC int gv(RegSet rc)
             }
         }
         vtop->r = r;
+	if (r1 != -1 && r1 < 16) {
+	    /* XXX understand why this is ever false */
+	    if(regset_has(rc, r1)) {
+                CType ty;
+                int a;
+		g(0x48);
+		g(0x90);
+		g(0x90);
+		vdup();
+		vdup();
+		vtop->r = get_reg_nofree(regset_singleton(r1));
+		gen_op(TOK_EQ);
+		a = gtst(0,0);
+		vdup();
+		vtop->type.t = VT_INT;
+		vdup();
+		vtop->type.t = VT_INT;
+		gen_op('^');
+		ty = vtop->type;
+		mk_pointer(&ty);
+		vtop->type = ty;
+		indir();
+		vpushi(0);
+		vswap();
+		vstore();
+		gsym(a);
+		vpop();
+
+		g(0x48);
+		g(0x90);
+		vtop->r = r1;
+		return r1;
+	    }
+	}
+
 #ifdef TCC_TARGET_C67
         /* uses register pairs for doubles */
         if ((vtop->type.t & VT_BTYPE) == VT_DOUBLE) 
@@ -5614,9 +5637,6 @@ static void init_putz(CType *t, Section *sec, unsigned long long c, int size)
     if (sec) {
         /* nothing to do because globals are already set to zero */
     } else {
-	CType ty;
-	ty.t = VT_LLONG;
-	ty.ref = NULL;
         vpush_global_sym(&func_old_type, TOK_memset);
         vseti(VT_LOCAL, c);
 #ifdef TCC_TARGET_ARM

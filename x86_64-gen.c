@@ -192,12 +192,13 @@ static int last_instruction_boundary[16] = { 0, };
 
 void ib(void)
 {
+    int i;
+
     check_baddies(-1, 0);
 
     if(last_instruction_boundary[0] == ind)
 	return;
 
-    int i;
     for(i=14; i>=0; i--) {
         last_instruction_boundary[i+1] = last_instruction_boundary[i];
     }
@@ -228,11 +229,11 @@ void commit_instructions(void)
 int check_nth_last_instruction_mask(int n, unsigned long long c, unsigned long long mask, int length)
 {
     int previb = n ? last_instruction_boundary[n-1] : ind;
+    int i=0;
+
     if((previb - last_instruction_boundary[n]) != length) {
         return 0;
     }
-
-    int i=0;
 
     while(i<length) {
         if((c&mask&0xff) != (cur_text_section->data[last_instruction_boundary[n]+i]&mask&0xff))
@@ -248,11 +249,11 @@ int check_nth_last_instruction_mask(int n, unsigned long long c, unsigned long l
 int check_nth_last_instruction(int n, unsigned long long c, int length)
 {
     int previb = n ? last_instruction_boundary[n-1] : ind;
+    int i=0;
+
     if((previb - last_instruction_boundary[n]) != length) {
         return 0;
     }
-
-    int i=0;
 
     while(i<length) {
         if((c&0xff) != (cur_text_section->data[last_instruction_boundary[n]+i]&0xff))
@@ -503,11 +504,11 @@ int check_baddies(int clobber_reg, int flags_okay)
 
 int check_last_instruction(unsigned int c, int length)
 {
+    int i=0;
+
     if(last_instruction_boundary[0] != ind - length) {
         return 0;
     }
-
-    int i=0;
 
     while(c) {
         if((c&0xff) != (cur_text_section->data[last_instruction_boundary[0]+i]&0xff))
@@ -570,6 +571,7 @@ void gen_le64(int64_t c)
 void orex(int bitsize, int r, int r2, int b)
 {
     int emit = bitsize == 64;
+    int rex;
 
     ib();
     while ((b & 0xff) == 0x66 || (b & 0xff) == 0xf3 || (b & 0xff) == 0xf2) {
@@ -581,7 +583,7 @@ void orex(int bitsize, int r, int r2, int b)
 	emit = 1;
     if (bitsize == 8 && r2 >= 4)
 	emit = 1;
-    int rex = 0x40 | REX_BASE(r) | (REX_BASE(r2) << 2) | ((bitsize == 64) << 3);
+    rex = 0x40 | REX_BASE(r) | (REX_BASE(r2) << 2) | ((bitsize == 64) << 3);
     if (rex != 0x40)
 	emit = 1;
     if ((r & VT_VALMASK) >= VT_CONST)
@@ -911,6 +913,7 @@ void load(int r, SValue *sv)
             orex(64,0,r,0x8d); /* lea xxx(%ebp), r */
             gen_modrm(r, VT_LOCAL, sv->sym, fc, 0);
         } else if (v == VT_CMP) {
+	    int l = 0;
 	    flags_used_counter++;
             orex(32,r,0,0);
 	    if ((fc &  ~0x100) == TOK_NE)
@@ -919,7 +922,6 @@ void load(int r, SValue *sv)
 		oad(0xb8 + REG_VALUE(r), 0); /* mov $0, r */
 	    check_baddies(r, 0);
 	    ib();
-	    int l = 0;
             if (fc & 0x100)
               {
                 /* This was a float compare.  If the parity bit is
@@ -935,12 +937,13 @@ void load(int r, SValue *sv)
 		gsym(l);
 	    flags_used_counter--;
         } else if (v == VT_JMP || v == VT_JMPI) {
+            int l;
 	    flags_used_counter++;
             t = v & 1;
             orex(32,r,0,0);
             oad(0xb8 + REG_VALUE(r), t); /* mov $1, r */
 	    check_baddies(r, 0);
-	    int l = gjmp(0);
+	    l = gjmp(0);
             if(gsym_nocommit(fc) > 1)
 	      commit_instructions();
             orex_always(0,r,0,0); /* not orex! */
@@ -1094,8 +1097,8 @@ void store(int r, SValue *v)
 /* 'is_jmp' is '1' if it is a jump */
 static void gcall_or_jmp(int is_jmp)
 {
-    get_flags();
     int r;
+    get_flags();
     if ((vtop->r & (VT_VALMASK | VT_LVAL)) == VT_CONST &&
 	((vtop->r & VT_SYM) || (vtop->c.ll-4) == (int)(vtop->c.ll-4))) {
         /* constant case */
@@ -1963,7 +1966,6 @@ void gfunc_call(int nb_args)
 
             for(k=REG_ARGS_MAX-1; k>=0; k--) {
                 int offset = reg_args[i].freg[k];
-                CType type = vtop->type;
 
                 if (offset == -1)
                     continue;
@@ -2632,6 +2634,7 @@ void gen_opf(int op)
         }
     } else {
         if (op >= TOK_ULT && op <= TOK_GT) {
+            int is_double;
 	    get_flags();
 
             /* if saved lvalue, then we must reload it */
@@ -2666,7 +2669,7 @@ void gen_opf(int op)
             assert(!(vtop[-1].r & VT_LVAL));
             
 
-	    int is_double = ((vtop->type.t & VT_BTYPE) == VT_DOUBLE);
+	    is_double = ((vtop->type.t & VT_BTYPE) == VT_DOUBLE);
 
             if (vtop->r & VT_LVAL) {
 		orex(0, r, vtop[-1].r, is_double ? 0x2e0f66 : 0x2e0f); /* ucomisd */
@@ -2680,6 +2683,7 @@ void gen_opf(int op)
             vtop->r = VT_CMP;
             vtop->c.i = op | 0x100;
         } else {
+            int is_double;
 	    get_flags();
             assert((vtop->type.t & VT_BTYPE) != VT_LDOUBLE);
             switch(op) {
@@ -2720,7 +2724,7 @@ void gen_opf(int op)
                 vswap();
             }
 
-	    int is_double = ((ft & VT_BTYPE) == VT_DOUBLE);
+	    is_double = ((ft & VT_BTYPE) == VT_DOUBLE);
             if (vtop->r & VT_LVAL) {
 		orex(0, r, vtop[-1].r, is_double ? 0xf2 : 0xf3);
             } else {
@@ -2775,8 +2779,8 @@ void gen_cvt_itof(int t)
         vtop->r = TREG_ST0;
     } else {
         int r = get_reg(RC_FLOAT);
-	get_flags();
 	int bs = 32;
+	get_flags();
         gv(RC_INT);
         if ((vtop->type.t & (VT_BTYPE | VT_UNSIGNED)) ==
             (VT_INT | VT_UNSIGNED) ||
@@ -2838,8 +2842,8 @@ void gen_cvt_ftof(int t)
             vtop->r = TREG_ST0;
         }
     } else {
-	get_flags();
         int r;
+	get_flags();
         gv(RC_ST0);
         r = get_reg(RC_FLOAT);
         if (tbt == VT_DOUBLE) {
@@ -2865,7 +2869,7 @@ void gen_cvt_ftof(int t)
 /* convert fp to int 't' type */
 void gen_cvt_ftoi(int t)
 {
-    int ft, bt, size, r;
+    int ft, bt, size, r, is_double;
     ft = vtop->type.t;
     bt = ft & VT_BTYPE;
     if (bt == VT_LDOUBLE) {
@@ -2880,7 +2884,7 @@ void gen_cvt_ftoi(int t)
         size = 4;
 
     r = get_reg(RC_INT);
-    int is_double = (bt == VT_DOUBLE);
+    is_double = (bt == VT_DOUBLE);
     orex(size * 8, vtop->r&8, r, is_double ? 0xf2 : 0xf3); /* cvttss2si or cvttsd2si */
     o(0x2c0f);
     get_flags();
@@ -2910,7 +2914,6 @@ ST_FUNC void gen_vla_sp_restore(int addr) {
 
 /* Subtract from the stack pointer, and push the resulting value onto the stack */
 ST_FUNC void gen_vla_alloc(CType *type, int align) {
-    get_flags();
 #ifdef TCC_TARGET_PE
     /* alloca does more than just adjust %rsp on Windows */
     vpush_global_sym(&func_old_type, TOK_alloca);
@@ -2920,6 +2923,7 @@ ST_FUNC void gen_vla_alloc(CType *type, int align) {
 #else
     int r;
     r = gv(RC_INT); /* allocation size */
+    get_flags();
     /* sub r,%rsp */
     orex(64, r, 0, 0x2b);
     o(0xe0 | REG_VALUE(r));
