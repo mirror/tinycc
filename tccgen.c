@@ -1798,7 +1798,7 @@ ST_FUNC void gen_op(int op)
         
     if (bt1 == VT_PTR || bt2 == VT_PTR) {
         /* at least one operand is a pointer */
-        /* relationnal op: must be both pointers */
+        /* relational op: must be both pointers */
         if (op >= TOK_ULT && op <= TOK_LOR) {
             check_comparison_pointer_types(vtop - 1, vtop, op);
             /* pointers are handled are unsigned */
@@ -1959,7 +1959,7 @@ ST_FUNC void gen_op(int op)
         else
             gen_opic(op);
         if (op >= TOK_ULT && op <= TOK_GT) {
-            /* relationnal op: the result is an int */
+            /* relational op: the result is an int */
             vtop->type.t = VT_INT;
         } else {
             vtop->type.t = t;
@@ -2569,7 +2569,7 @@ static void gen_assign_cast(CType *dt)
             goto type_ok;
         }
         type1 = pointed_type(dt);
-        /* a function is implicitely a function pointer */
+        /* a function is implicitly a function pointer */
         if (sbt == VT_FUNC) {
             if ((type1->t & VT_BTYPE) != VT_VOID &&
                 !is_compatible_types(pointed_type(dt), st))

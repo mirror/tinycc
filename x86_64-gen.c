@@ -774,14 +774,14 @@ static void gen_modrm_impl(int op_reg, int r, Sym *sym, int c, int is_got, int i
     }
 }
 
-/* generate a modrm reference. 'op_reg' contains the addtionnal 3
+/* generate a modrm reference. 'op_reg' contains the additional 3
    opcode bits */
 static void gen_modrm(int op_reg, int r, Sym *sym, int c, int is_mem)
 {
     gen_modrm_impl(op_reg, r, sym, c, 0, is_mem);
 }
 
-/* generate a modrm reference. 'op_reg' contains the addtionnal 3
+/* generate a modrm reference. 'op_reg' contains the additional 3
    opcode bits */
 static void gen_modrm64(int opcode, int op_reg, int r, Sym *sym, int c, int is_mem)
 {
@@ -1859,7 +1859,7 @@ void gfunc_call(int nb_args)
 
             /* Swap argument to top, it will possibly be changed here,
               and might use more temps. At the end of the loop we keep
-              in on the stack and swap it back to its original position
+              it on the stack and swap it back to its original position
               if it is a register. */
             tmp = vtop[0];
             vtop[0] = vtop[-i];
@@ -2499,6 +2499,7 @@ void gen_opi(int op)
 	get_flags();
         opc = 0xc0 | (opc << 3);
         if (cc) {
+	    /* XXX cc = 1,2,3 -> lea */
             /* constant case */
             vswap();
             r = gv(RC_INT);
@@ -2553,7 +2554,7 @@ void gen_opl(int op)
 }
 
 /* generate a floating point operation 'v = t1 op t2' instruction. The
-   two operands are guaranted to have the same floating point type */
+   two operands are guaranteed to have the same floating point type */
 /* XXX: need to use ST1 too */
 void gen_opf(int op)
 {
