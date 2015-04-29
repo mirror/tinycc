@@ -1228,6 +1228,7 @@ ST_FUNC void end_special_use(int);
 ST_FUNC int regset_has(RegSet, int);
 ST_FUNC RegSet regset_singleton(int);
 ST_FUNC RegSet regset_union(RegSet, RegSet);
+ST_FUNC RegSet regset_difference(RegSet, RegSet);
 
 ST_INLN int is_float(int t);
 ST_FUNC int ieee_finite(double d);

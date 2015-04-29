@@ -185,6 +185,11 @@ ST_FUNC RegSet regset_union(RegSet rs1, RegSet rs2)
     return rs1|rs2;
 }
 
+ST_FUNC RegSet regset_difference(RegSet rs1, RegSet rs2)
+{
+    return rs1&~rs2;
+}
+
 /* XXX: make it faster ? */
 void g(int c)
 {
