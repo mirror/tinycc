@@ -302,6 +302,12 @@
 #endif
 
 typedef unsigned long long RegSet;
+
+void commit_instructions(void);
+int check_baddies(int, int);
+int check_last_instruction(unsigned int, int);
+int get_index(void);
+
 #define TARGET_DEFS_ONLY
 #ifdef TCC_TARGET_I386
 # include "i386-gen.c"
@@ -1339,8 +1345,8 @@ ST_FUNC int handle_eob(void);
 
 ST_DATA const int reg_classes[NB_REGS];
 
-ST_FUNC void gsym_addr(int t, int a);
-ST_FUNC void gsym(int t);
+ST_FUNC int gsym_addr(int t, int a);
+ST_FUNC int gsym(int t);
 ST_FUNC void load(int r, SValue *sv);
 ST_FUNC void store(int r, SValue *v);
 ST_FUNC int regargs_nregs(RegArgs *args);

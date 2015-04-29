@@ -4966,9 +4966,9 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
 
     /* generate line number info */
     if (tcc_state->do_debug &&
-        (last_line_num != file->line_num || last_ind != ind)) {
-        put_stabn(N_SLINE, 0, file->line_num, ind - func_ind);
-        last_ind = ind;
+        (last_line_num != file->line_num || last_ind != get_index())) {
+        put_stabn(N_SLINE, 0, file->line_num, get_index() - func_ind);
+        last_ind = get_index();
         last_line_num = file->line_num;
     }
 
@@ -4997,7 +4997,7 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
             gsym(a);
     } else if (tok == TOK_WHILE) {
         next();
-        d = ind;
+        d = get_index();
         if (vla_flags & VLA_IN_SCOPE) {
           gen_vla_sp_restore(*vla_sp_loc);
           vla_flags |= VLA_NEED_NEW_FRAME;
@@ -5236,8 +5236,8 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
             }
         }
         skip(';');
-        d = ind;
-        c = ind;
+        d = get_index();
+        c = get_index();
         if (vla_flags & VLA_IN_SCOPE) {
           gen_vla_sp_restore(*vla_sp_loc);
           vla_flags |= VLA_NEED_NEW_FRAME;
@@ -5251,7 +5251,7 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
         skip(';');
         if (tok != ')') {
             e = gjmp(0);
-            c = ind;
+            c = get_index();
             if (vla_flags & VLA_IN_SCOPE) {
               gen_vla_sp_restore(*vla_sp_loc);
               vla_flags |= VLA_NEED_NEW_FRAME;
@@ -5273,7 +5273,7 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
         next();
         a = 0;
         b = 0;
-        d = ind;
+        d = get_index();
         if (vla_flags & VLA_IN_SCOPE) {
           gen_vla_sp_restore(*vla_sp_loc);
           vla_flags |= VLA_NEED_NEW_FRAME;
@@ -5298,12 +5298,13 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
         vpop();
         skip(')');
         a = 0;
+	commit_instructions();
         b = gjmp(0); /* jump to first case */
         c = 0;
         block(&a, csym, &b, &c, case_reg, 0);
         /* if no default, jmp after switch */
-        if (c == 0)
-            c = ind;
+	if (c == 0)
+            c = get_index();
         /* default label */
         gsym_addr(b, c);
         /* break label */
@@ -5353,7 +5354,7 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
             expect("switch");
         if (*def_sym)
             tcc_error("too many 'default'");
-        *def_sym = ind;
+        *def_sym = get_index();
         is_expr = 0;
         goto block_after_label;
     } else
@@ -5413,7 +5414,7 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
             } else {
                 s = label_push(&global_label_stack, b, LABEL_DEFINED);
             }
-            s->jnext = ind;
+            s->jnext = get_index();
             if (vla_flags & VLA_IN_SCOPE) {
                 gen_vla_sp_restore(*vla_sp_loc);
                 vla_flags |= VLA_NEED_NEW_FRAME;
@@ -6316,9 +6317,9 @@ static void gen_function(Sym *sym)
     nocode_wanted = 0;
     ind = cur_text_section->data_offset;
     /* NOTE: we patch the symbol size later */
-    put_extern_sym(sym, cur_text_section, ind, 0);
+    put_extern_sym(sym, cur_text_section, get_index(), 0);
     funcname = get_tok_str(sym->v, NULL);
-    func_ind = ind;
+    func_ind = get_index();
     /* Initialize VLA state */
     vla_sp_loc = &vla_sp_root_loc;
     vla_flags = VLA_NEED_NEW_FRAME;
@@ -6347,7 +6348,7 @@ static void gen_function(Sym *sym)
     block(NULL, NULL, NULL, NULL, 0, 0);
     gsym(rsym);
     gfunc_epilog();
-    cur_text_section->data_offset = ind;
+    cur_text_section->data_offset = get_index();
     label_pop(&global_label_stack, NULL);
     /* reset local stack */
     scope_stack_bottom = NULL;
@@ -6355,13 +6356,13 @@ static void gen_function(Sym *sym)
     /* end of function */
     /* patch symbol size */
     ((ElfW(Sym) *)symtab_section->data)[sym->c].st_size = 
-        ind - func_ind;
+        get_index() - func_ind;
     /* patch symbol weakness (this definition overrules any prototype) */
     if (sym->type.t & VT_WEAK)
         weaken_symbol(sym);
     apply_visibility(sym, &sym->type);
     if (tcc_state->do_debug) {
-        put_stabn(N_FUN, 0, 0, ind - func_ind);
+        put_stabn(N_FUN, 0, 0, get_index() - func_ind);
     }
     /* It's better to crash than to generate wrong code */
     cur_text_section = NULL;

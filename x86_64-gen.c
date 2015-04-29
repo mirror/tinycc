@@ -183,6 +183,343 @@ ST_FUNC RegSet regset_union(RegSet rs1, RegSet rs2)
     return rs1|rs2;
 }
 
+#if 0 /* no last instructions */
+#define ib() do { } while(0)
+#define check_nth_last_instruction(n, c, length) do { (void)(n); (void)(c); (void)(length); } while(0)
+#else
+
+static int last_instruction_boundary[16] = { 0, };
+
+void ib(void)
+{
+    check_baddies(-1, 0);
+
+    if(last_instruction_boundary[0] == ind)
+	return;
+
+    int i;
+    for(i=14; i>=0; i--) {
+        last_instruction_boundary[i+1] = last_instruction_boundary[i];
+    }
+    last_instruction_boundary[0] = ind;
+}
+
+/* undo count instruction barriers */
+void uib(int count)
+{
+    int i;
+    while(count--) {
+	ind = last_instruction_boundary[0];
+	for(i=0; i<=14; i++) {
+	    last_instruction_boundary[i] = last_instruction_boundary[i+1];
+	}
+	last_instruction_boundary[15] = 0;
+    }
+}
+
+void commit_instructions(void)
+{
+    int ind1 = ind;
+    uib(16);
+    ind = ind1;
+    uncache_values();
+}
+
+int check_nth_last_instruction_mask(int n, unsigned long long c, unsigned long long mask, int length)
+{
+    int previb = n ? last_instruction_boundary[n-1] : ind;
+    if((previb - last_instruction_boundary[n]) != length) {
+        return 0;
+    }
+
+    int i=0;
+
+    while(i<length) {
+        if((c&mask&0xff) != (cur_text_section->data[last_instruction_boundary[n]+i]&mask&0xff))
+            return 0;
+        i++;
+        c>>=8;
+	mask>>=8;
+    }
+
+    return 1;
+}
+
+int check_nth_last_instruction(int n, unsigned long long c, int length)
+{
+    int previb = n ? last_instruction_boundary[n-1] : ind;
+    if((previb - last_instruction_boundary[n]) != length) {
+        return 0;
+    }
+
+    int i=0;
+
+    while(i<length) {
+        if((c&0xff) != (cur_text_section->data[last_instruction_boundary[n]+i]&0xff))
+            return 0;
+        i++;
+        c>>=8;
+    }
+
+    return 1;
+}
+
+void dump_ibs(void)
+{
+    int n=0;
+
+    int prev_ib = ind;
+    for(n=0; n<16 && last_instruction_boundary[n]; n++) {
+        int ib = last_instruction_boundary[n];
+
+        fprintf(stderr, "instruction %3d at %5d: ", n, ib);
+
+        while(ib<prev_ib) {
+            fprintf(stderr, "%02x ", cur_text_section->data[ib++]);
+        }
+        prev_ib = last_instruction_boundary[n];
+
+        fprintf(stderr, "\n");
+    }
+}
+
+static int flags_used_counter = 0;
+
+int flags_used(void)
+{
+    if(flags_used_counter)
+	return 1;
+
+    if (vtop >= vstack && ((vtop->r & VT_VALMASK) == VT_CMP ||
+			   (vtop->r & VT_VALMASK) == VT_JMP ||
+			   (vtop->r & VT_VALMASK) == VT_JMPI))
+	return 1;
+
+    return 1;
+
+    /* XXX can values on the stack further down use flags? */
+    return 0;
+}
+
+/* returns 1 only if flags_okay, to indicate inverted return value */
+int check_baddies(int clobber_reg, int flags_okay)
+{
+    /* mov $0x0, %eax -> xor %eax,%eax, but only if flags aren't used. */
+    if (!flags_used() && check_nth_last_instruction(0, 0xb8, 5)) {
+        uib(1);
+	memset(cur_text_section->data + ind, 0, 5);
+
+        g(0x31);
+        g(0xc0);
+        ib();
+    }
+
+    /*  80886b4:       89 c0                   mov    %eax,%eax */
+
+    if (check_last_instruction(0xc089, 2)) {
+	ind -= 2;
+	uib(1);
+    }
+
+    /*
+      * 0x0000000000d6a931:	b8 00 00 00 00		mov    $0x0,%eax
+     *  0x0000000000d2b867:	0f 94 c0		sete   %al
+     *  0x0000000000d2b86a:	85 c0			test   %eax,%eax
+     */
+    if (flags_okay &&
+	(clobber_reg == TREG_RAX) &&
+	check_last_instruction(0xc085, 2) &&
+	check_nth_last_instruction(1, 0xc0940f, 3) &&
+	check_nth_last_instruction(2, 0xb8, 5)) {
+
+      return 0;
+	ind -= 10;
+	uib(3);
+
+	ib();
+	memset(cur_text_section->data + ind, 0, 10);
+
+	return 1;
+    }
+
+    /*
+     *  0x0000000000d2b862:	b8 00 00 00 00		mov    $0x0,%eax
+     *  0x0000000000d2b867:	0f 94 c0		sete   %al
+     *  0x0000000000d2b86a:	85 c0			test   %eax,%eax
+     *  0x0000000000d2b86c:	0f 84 2a 00 00 00	je     0xd2b89c
+     */
+
+    if (check_last_instruction(0x840f, 6) &&
+	check_nth_last_instruction(1, 0xc085, 2) &&
+	check_nth_last_instruction(2, 0xc0940f, 3) &&
+	check_nth_last_instruction(3, 0xb8, 5)) {
+    }
+
+
+    /*
+     * 0x0000000001eb4a0c:	b8 00 00 00 00		mov    $0x0,%eax
+     * 0x0000000001eb4a11:	0f 94 c0		sete   %al
+     * 0x0000000001eb4a14:	85 c0			test   %eax,%eax
+     *
+     * 0x0000000001eb4a16:	0f 84 27 00 00 00	je     0x1eb4a43
+     */
+
+    /* jmpq blah -> jmp blah. Actually difficult to do. */
+
+    /*
+     *    0x0000000000fe861f:   0f 84 05 00 00 00       je     0xfe862a
+     *    0x0000000000fe8625:   e9 07 00 00 00  jmpq   0xfe8631
+     *    0x0000000000fe862a:   31 c0   xor    %eax,%eax
+     *    0x0000000000fe862c:   e9 05 00 00 00  jmpq   0xfe8636
+     *    0x0000000000fe8631:   b8 01 00 00 00  mov    $0x1,%eax
+     *    0x0000000000fe8636:   85 c0   test   %eax,%eax
+     *
+     *    <check vtop depends only on E flag>
+     */
+
+    /*
+     *  A very wordy nop:
+     *
+     * 0x0000000000be82d8:	0f 84 07 00 00 00	je     0xbe82e5
+     * 0x0000000000be82de:	b8 00 00 00 00		mov    $0x0,%eax
+     * 0x0000000000be82e3:	eb 05			jmp    0xbe82ea
+     * 0x0000000000be82e5:	b8 01 00 00 00		mov    $0x1,%eax
+     * 0x0000000000be82ea:	85 c0			test   %eax,%eax
+     *
+     *    <check vtop depends only on E flag>
+     * This is generated by Perl expressions of the form if((x) ? 1 : 0) { ... }
+     */
+
+    if (check_nth_last_instruction(0, 0xc085, 2) &&
+        check_nth_last_instruction(1, 0x01b8, 5) &&
+        check_nth_last_instruction(2, 0x05eb, 2) &&
+        check_nth_last_instruction(3, 0xb8, 5) &&
+        check_nth_last_instruction(4, 0x07840f, 6)) {
+      return 0;
+
+        uib(5);
+	memset(cur_text_section->data + ind, 0, 6+5+2+5+2);
+    }
+
+    /*
+     *  A very wordy nop, second variant:
+     *
+     * 0x0000000000dba323:	0f 84 05 00 00 00	je     0xdba32e
+     * 0x0000000000dba329:	e9 07 00 00 00		jmpq   0xdba335
+     * 0x0000000000dba32e:	31 c0			xor    %eax,%eax
+     * 0x0000000000dba330:	e9 05 00 00 00		jmpq   0xdba33a
+     * 0x0000000000dba335:	b8 01 00 00 00		mov    $0x1,%eax
+     * 0x0000000000dba33a:	85 c0			test   %eax,%eax
+     *
+     *    <check vtop depends only on E flag>
+     * This is generated by Perl expressions of the form if((x) ? 1 : 0) { ... }
+     */
+
+    if (check_nth_last_instruction(0, 0xc085, 2) &&
+        check_nth_last_instruction(1, 0x01b8, 5) &&
+        check_nth_last_instruction(2, 0x05e9, 5) &&
+        check_nth_last_instruction(3, 0xc031, 2) &&
+        check_nth_last_instruction(4, 0x07e9, 5) &&
+        check_nth_last_instruction(5, 0x05840f, 6)) {
+
+      return 0;
+        uib(6);
+	memset(cur_text_section->data + ind, 0, 6+5+2+5+5+2);
+    }
+
+    /*
+     *  A very wordy not. With a t:
+     *
+     * 0x0000000000b2f9ac:	0f 85 05 00 00 00	jne    0xb2f9b7
+     * 0x0000000000b2f9b2:	e9 07 00 00 00		jmpq   0xb2f9be
+     * 0x0000000000b2f9b7:	31 c0			xor    %eax,%eax
+     * 0x0000000000b2f9b9:	e9 05 00 00 00		jmpq   0xb2f9c3
+     * 0x0000000000b2f9be:	b8 01 00 00 00		mov    $0x1,%eax
+     * 0x0000000000b2f9c3:	85 c0			test   %eax,%eax
+     *
+     *    <check vtop depends only on E flag>
+     * This is generated by Perl expressions of the form if((x) ? 1 : 0) { ... }
+     */
+
+    if (check_nth_last_instruction(0, 0xc085, 2) &&
+        check_nth_last_instruction(1, 0x01b8, 5) &&
+        check_nth_last_instruction(2, 0x05e9, 5) &&
+        check_nth_last_instruction(3, 0xc031, 2) &&
+        check_nth_last_instruction(4, 0x07e9, 5) &&
+        check_nth_last_instruction(5, 0x05850f, 6)) {
+      return 0;
+
+	if (flags_okay) {
+	    uib(6);
+
+	    return 1 ^ check_baddies(clobber_reg, 1);
+	}
+    }
+
+    /*
+     * 81c28f2:	48 89 01 111 101 f8          	mov    %rdi,-0x8(%rbp)
+     * 81c28f6:	48 8b 01 000 101 f8          	mov    -0x8(%rbp),%rax
+     */
+
+    if (0 &&
+	check_nth_last_instruction_mask(0, 0x00408b48, 0x00c0ffff, 4) &&
+	check_nth_last_instruction_mask(1, 0x00708948, 0x00c0ffff, 4)) {
+	int offset1 = cur_text_section->data[ind - 5];
+	int offset2 = cur_text_section->data[ind - 1];
+
+	if (offset1 == offset2) {
+	    int reg12 = REG_VALUE(cur_text_section->data[ind - 6]);
+	    int reg22 = REG_VALUE(cur_text_section->data[ind - 2]);
+
+	    if (reg12 == reg22) {
+		int reg11 = REG_VALUE(cur_text_section->data[ind - 6] >> 3);
+		int reg21 = REG_VALUE(cur_text_section->data[ind - 2] >> 3);
+
+		uib(1);
+
+		if (reg11 != reg21) {
+		    g(0x48);
+		    g(0x8b);
+		    g(0xc0 | (reg21 << 3) | reg11);
+		}
+	    }
+	}
+    }
+
+    /*
+     *  81c0d6c:	0f 84 05 00 00 00    	je     81c0d77 <Perl_sv_2num+0x29>
+     *  81c0d72:	e9 09 00 00 00       	jmpq   81c0d80 <Perl_sv_2num+0x32>
+     *
+     * impossible to catch because of committed instructions, but should be jne 81c0d80.
+     */
+
+    if(check_nth_last_instruction_mask(0, 0xe9, 0xff, 5) &&
+       check_nth_last_instruction_mask(1, 0x05840f, 0xffffff, 6)) {
+    }
+
+
+    return 0;
+}
+
+int check_last_instruction(unsigned int c, int length)
+{
+    if(last_instruction_boundary[0] != ind - length) {
+        return 0;
+    }
+
+    int i=0;
+
+    while(c) {
+        if((c&0xff) != (cur_text_section->data[last_instruction_boundary[0]+i]&0xff))
+            return 0;
+        i++;
+        c>>=8;
+    }
+
+    return 1;
+}
+#endif
+
 /* XXX: make it faster ? */
 void g(int c)
 {
@@ -280,20 +617,37 @@ void orex4(int ll, int r3, int r, int r2, int b)
 }
 
 /* output a symbol and patch all calls to it */
-void gsym_addr(int t, int a)
+int gsym_addr(int t, int a)
 {
     int n, *ptr;
+    int ret = 0;
     while (t) {
         ptr = (int *)(cur_text_section->data + t);
         n = *ptr; /* next value */
         *ptr = a - t - 4;
         t = n;
+	ret++;
     }
+    return ret;
 }
 
-void gsym(int t)
+int gsym(int t)
 {
-    gsym_addr(t, ind);
+    return gsym_addr(t, get_index());
+}
+
+int gsym_nocommit(int t)
+{
+    return gsym_addr(t, ind);
+}
+
+/* retrieve the current instruction index, committing all instructions so far to keep it valid */
+
+int get_index(void)
+{
+    commit_instructions();
+
+    return ind;
 }
 
 /* psym is used to put an instruction with a data field which is a
@@ -557,11 +911,14 @@ void load(int r, SValue *sv)
             orex(64,0,r,0x8d); /* lea xxx(%ebp), r */
             gen_modrm(r, VT_LOCAL, sv->sym, fc, 0);
         } else if (v == VT_CMP) {
+	    flags_used_counter++;
             orex(32,r,0,0);
 	    if ((fc &  ~0x100) == TOK_NE)
 		oad(0xb8 + REG_VALUE(r), 1);
 	    else
 		oad(0xb8 + REG_VALUE(r), 0); /* mov $0, r */
+	    check_baddies(r, 0);
+	    ib();
 	    int l = 0;
             if (fc & 0x100)
               {
@@ -574,11 +931,23 @@ void load(int r, SValue *sv)
             orex_always(8,r,0, 0x0f); /* setxx %br XXX mov $0,r; setxx %rb -> setxx, and */
             o(fc);
             o(0xc0 + REG_VALUE(r));
+	    if (l)
+		gsym(l);
+	    flags_used_counter--;
         } else if (v == VT_JMP || v == VT_JMPI) {
+	    flags_used_counter++;
             t = v & 1;
             orex(32,r,0,0);
             oad(0xb8 + REG_VALUE(r), t); /* mov $1, r */
+	    check_baddies(r, 0);
+	    int l = gjmp(0);
+            if(gsym_nocommit(fc) > 1)
+	      commit_instructions();
+            orex_always(0,r,0,0); /* not orex! */
             oad(0xb8 + REG_VALUE(r), t ^ 1); /* mov $0, r */
+	    gsym(l);
+	    check_baddies(r, 0);
+	    flags_used_counter--;
         } else if (v != r) {
             if ((r >= TREG_XMM0) && (r <= TREG_XMM7)) {
                 if (v == TREG_ST0) {
@@ -742,7 +1111,7 @@ static void gcall_or_jmp(int is_jmp)
         } else {
             /* put an empty PC32 relocation */
             put_elf_reloc(symtab_section, cur_text_section,
-                          ind + 1, R_X86_64_PC32, 0);
+                          get_index() + 1, R_X86_64_PC32, 0);
         }
         oad(0xe8 + is_jmp, vtop->c.ul - 4); /* call/jmp im */
     } else {
@@ -1684,6 +2053,7 @@ void gfunc_call(int nb_args)
             o(0xd9894c); /* mov %r11, %rcx */
         }
     }
+    ib();
     if (nb_sse_args)
       oad(0xb8, nb_sse_args < 8 ? nb_sse_args : 8); /* mov nb_sse_args, %eax */
     else {
@@ -1937,6 +2307,7 @@ void gfunc_epilog(void)
 /* generate a jump to a label */
 int gjmp(int t)
 {
+    ib();
     return psym(0xe9, t);
 }
 
@@ -1945,6 +2316,7 @@ void gjmp_addr(int a)
 {
     int r;
     r = a - ind - 2;
+    ib();
     if (r == (char)r) {
         g(0xeb);
         g(r);
@@ -1979,8 +2351,14 @@ int gtst(int inv, int t)
 		t = psym(0x8a, t); /* jp t */
 	      }
 	  }
+	commit_instructions();
+	inv ^= check_baddies(-1, 1);
+	ib();
         g(0x0f);
         t = psym((vtop->c.i - 16) ^ inv, t);
+	if (l)
+	    gsym(l);
+	commit_instructions();
     } else if (v == VT_JMP || v == VT_JMPI) {
         /* && or || optimization */
         if ((v & 1) == inv) {
