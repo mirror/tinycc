@@ -608,7 +608,9 @@ int main(int argc, char **argv) {
   int i;
   const char *testname = NULL;
   int retval = EXIT_SUCCESS;
-  
+
+  //signal(SIGSEGV, segv_handler);
+
   /* if tcclib.h and libtcc1.a are not installed, where can we find them */
   for (i = 1; i < argc; ++i) {
     if (!memcmp(argv[i], "lib_path=",9))
@@ -617,7 +619,7 @@ int main(int argc, char **argv) {
       testname = argv[i] + 9;
     else if (!memcmp(argv[i], "include=", 8))
       include_dir = argv[i] + 8;
-  }   
+  }
 
   RUN_TEST(ret_int_test);
   RUN_TEST(ret_longlong_test);

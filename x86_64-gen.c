@@ -1008,16 +1008,14 @@ void store_pic(int r,SValue *v)
 
     /* XXX: incorrect if float reg to reg */
     if (bt == VT_FLOAT) {
-	orex(0, v->r, r, 0x0f66);
+	orex(0, pic_reg, r, 0x0f66);
 	if (r < TREG_XMM0)
 	    o(0x7e); /* movd/movq */
 	else
 	    o(0xd6);
-        r = REG_VALUE(r);
     } else if (bt == VT_DOUBLE) {
         orex(0, pic_reg, r, 0x0f66);
         o(0xd6); /* movq */
-        r = REG_VALUE(r);
     } else if (bt == VT_LDOUBLE) {
         o(0xc0d9); /* fld %st(0) */
         r = 7;
@@ -1392,14 +1390,6 @@ void gfunc_call(int nb_args)
         vtop--;
     }
     save_regs(0);
-    
-    /* Copy R10 and R11 into RCX and RDX, respectively */
-    if (nb_args > 0) {
-        o(0xd1894c); /* mov %r10, %rcx */
-        if (nb_args > 1) {
-            o(0xda894c); /* mov %r11, %rdx */
-        }
-    }
     
     gcall_or_jmp(0);
     vtop--;
@@ -1816,7 +1806,8 @@ void gfunc_call(int nb_args)
         }
 
         if((fregs || iregs) && (vtop[-i].type.t & VT_BTYPE) == VT_STRUCT) {
-            align_struct(&vtop[-i].type, i);
+            CType type = vtop[-i].type;
+            align_struct(&type, i);
         }
     }
 
@@ -1957,11 +1948,7 @@ void gfunc_call(int nb_args)
     /* XXX This should be superfluous.  */
     save_regs(0); /* save used temporary registers */
 
-    /* then, we prepare register passing arguments.
-                r = get_reg(RC_INT);
-       Note that we cannot set RDX and RCX in this loop because gv()
-       may break these temporary registers. Let's use R10 and R11
-       instead of them */
+    /* then, we prepare register passing arguments. */
     assert(gen_reg <= REGN);
     assert(sse_reg <= 8);
     for(i = 0; i < nb_args; i++) {
@@ -2046,13 +2033,6 @@ void gfunc_call(int nb_args)
     }
     assert((vtop->type.t & VT_BTYPE) == VT_FUNC);
 
-    /* Copy R10 and R11 into RDX and RCX, respectively */
-    if (nb_reg_args > 2) {
-        o(0xd2894c); /* mov %r10, %rdx */
-        if (nb_reg_args > 3) {
-            o(0xd9894c); /* mov %r11, %rcx */
-        }
-    }
     ib();
     if (nb_sse_args)
       oad(0xb8, nb_sse_args < 8 ? nb_sse_args : 8); /* mov nb_sse_args, %eax */
