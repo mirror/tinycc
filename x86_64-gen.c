@@ -2332,6 +2332,7 @@ int gtst(int inv, int t)
 
     v = vtop->r & VT_VALMASK;
     if (v == VT_CMP) {
+	int l = 0;
         /* fast case : can jump directly since flags are set */
 	if (vtop->c.i & 0x100)
 	  {
@@ -2344,7 +2345,7 @@ int gtst(int inv, int t)
 	       otherwise if unordered we don't want to jump.  */
 	    vtop->c.i &= ~0x100;
 	    if (!inv == (vtop->c.i != TOK_NE))
-	      o(0x067a);  /* jp +6 */
+		l = psym(0x8a0f, 0);
 	    else
 	      {
 	        g(0x0f);
