@@ -697,7 +697,6 @@ ST_FUNC int get_reg_nofree(RegSet rs)
 	    if (regset_has(special_use_regset, r))
 		goto notfound2;
 	    last_r = r;
-	    uncache_value_by_register(r);
             return r;
         }
     notfound2: ;
@@ -756,7 +755,6 @@ ST_FUNC int get_reg(RegSet rs)
     int r;
 
     r = get_reg_nofree(rs);
-    uncache_value_by_register(r);
 
     return r;
 }
