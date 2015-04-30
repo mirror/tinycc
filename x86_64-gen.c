@@ -144,7 +144,7 @@ enum {
 #include "tcc.h"
 #include <assert.h>
 
-ST_DATA const RegSet RC_INT   = 0x000fc7; /* this must contain %r11 or calls won't work */
+ST_DATA const RegSet RC_INT   = 0x000007; /* this must contain %r11 or calls won't work */
 ST_DATA const RegSet RC_FLOAT = 0xff0000;
 ST_DATA const RegSet RC_RAX   = 1 <<  0;
 ST_DATA const RegSet RC_RCX   = 1 <<  1;
@@ -506,7 +506,7 @@ void load(int r, SValue *sv)
 		fc &= ~0x100;
 		o(0x037a + (REX_BASE(r) << 8));
 	      }
-            orex(0,r,0, 0x0f); /* setxx %br */
+            orex(0,r,0, 0x0f); /* setxx %br. This is wrong for registers 4-7. */
             o(fc);
             o(0xc0 + REG_VALUE(r));
         } else if (v == VT_JMP || v == VT_JMPI) {
@@ -840,7 +840,7 @@ void gfunc_call(int nb_args)
     struct_size = args_size;
     for(i = 0; i < nb_args; i++) {
         SValue *sv;
-        
+
         --arg;
         sv = &vtop[-i];
         bt = (sv->type.t & VT_BTYPE);
@@ -1357,7 +1357,9 @@ void gfunc_call(int nb_args)
         }
 
         if((fregs || iregs) && (vtop[-i].type.t & VT_BTYPE) == VT_STRUCT) {
-            align_struct(&vtop[-i].type, i);
+            CType type = vtop[-i].type;
+
+            align_struct(&type, i);
         }
     }
 
@@ -1604,6 +1606,9 @@ void gfunc_call(int nb_args)
 
     oad(0xb8, nb_sse_args < 8 ? nb_sse_args : 8); /* mov nb_sse_args, %eax */
     gcall_or_jmp(0);
+    end_special_use_regset(RC_ARGUMENTS);
+    end_special_use(TREG_R10);
+    end_special_use(TREG_R11);
     if (args_size)
         gadd_sp(args_size);
     vtop--;

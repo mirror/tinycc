@@ -668,27 +668,11 @@ ST_FUNC int get_reg_ex(int rc, int rc2)
 /* find a free register in set 'rs'. If none, save one register */
 ST_FUNC int get_reg_nofree(RegSet rs)
 {
-    static int last_r = -1;
     int r;
     SValue *p;
 
-    /* find a free register that doesn't have cached data in it */
-    for(r=0;r<NB_REGS;r++) {
-	if (regset_has(rs, r)) {
-            for(p=vstack;p<=vtop;p++) {
-                if ((p->r & VT_VALMASK) == r)
-                    goto notfound1;
-            }
-	    if (regset_has(special_use_regset, r))
-		goto notfound1;
-	    last_r = r;
-            return r;
-        }
-    notfound1: ;
-    }
-
     /* find a free register */
-    for(r=last_r+1;r<NB_REGS;r++) {
+    for(r=0;r<NB_REGS;r++) {
 	if (regset_has(rs, r)) {
             for(p=vstack;p<=vtop;p++) {
                 if ((p->r & VT_VALMASK) == r)
@@ -696,41 +680,11 @@ ST_FUNC int get_reg_nofree(RegSet rs)
             }
 	    if (regset_has(special_use_regset, r))
 		goto notfound2;
-	    last_r = r;
             return r;
         }
     notfound2: ;
     }
 
-    /* find a free register */
-    for(r=0;r<=last_r;r++) {
-	if (regset_has(rs, r)) {
-            for(p=vstack;p<=vtop;p++) {
-                if ((p->r & VT_VALMASK) == r)
-                    goto notfound3;
-            }
-	    if (regset_has(special_use_regset, r))
-		goto notfound3;
-	    last_r = r;
-            return r;
-        }
-    notfound3: ;
-    }
-
-    for(r=0;r<NB_REGS;r++) {
-	if (regset_has(rs, r)) {
-            for(p=vstack;p<=vtop;p++) {
-                if ((p->r & VT_VALMASK) == r)
-                    goto notfound;
-            }
-	    if (regset_has(special_use_regset, r))
-                goto notfound;
-            return r;
-        }
-      notfound: ;
-    }
-
-    
     /* no register left : free the first one on the stack (VERY
        IMPORTANT to start from the bottom to ensure that we don't
        spill registers used in gen_opi()) */
@@ -939,13 +893,13 @@ ST_FUNC int gv(RegSet rc)
            - lvalue (need to dereference pointer)
            - already a register, but not in the right class */
         if (r >= VT_CONST
-         || (vtop->r & VT_LVAL)
-         || !(reg_classes[r] & rc)
+            || (vtop->r & VT_LVAL)
+            || !(regset_has(rc, r))
 #if defined(TCC_TARGET_ARM64) || defined(TCC_TARGET_X86_64)
-         || ((vtop->type.t & VT_BTYPE) == VT_QLONG && !(reg_classes[vtop->r2] & rc2))
-         || ((vtop->type.t & VT_BTYPE) == VT_QFLOAT && !(reg_classes[vtop->r2] & rc2))
+            || ((vtop->type.t & VT_BTYPE) == VT_QLONG && !(regset_has(rc2, vtop->r2)))
+            || ((vtop->type.t & VT_BTYPE) == VT_QFLOAT && !(regset_has(rc2, vtop->r2)))
 #else
-         || ((vtop->type.t & VT_BTYPE) == VT_LLONG && !(reg_classes[vtop->r2] & rc2))
+            || ((vtop->type.t & VT_BTYPE) == VT_LLONG && !(regset_has(rc2, vtop->r2)))
 #endif
             )
         {
