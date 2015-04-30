@@ -813,7 +813,7 @@ ST_FUNC int get_reg_nofree(RegSet rs)
         }
     }
 
-    assert(0);
+    TCC_ASSERT(0);
     /* Should never come here */
     return -1;
 }
@@ -1019,7 +1019,7 @@ ST_FUNC int gv(RegSet rc)
 
 	    if (r == -1)
 		r = get_reg(rc);
-	    assert(r != -1);
+	    TCC_ASSERT(r != -1);
 
 	    if(r1 != -1) {
 		if (r1 == r) {

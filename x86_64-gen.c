@@ -2929,6 +2929,8 @@ ST_FUNC void gen_vla_sp_restore(int addr) {
 
 /* Subtract from the stack pointer, and push the resulting value onto the stack */
 ST_FUNC void gen_vla_alloc(CType *type, int align) {
+    int r;
+    get_flags();
 #ifdef TCC_TARGET_PE
     /* alloca does more than just adjust %rsp on Windows */
     vpush_global_sym(&func_old_type, TOK_alloca);
@@ -2936,7 +2938,6 @@ ST_FUNC void gen_vla_alloc(CType *type, int align) {
     gfunc_call(1);
     vset(type, REG_IRET, 0);
 #else
-    int r;
     r = gv(RC_INT); /* allocation size */
     get_flags();
     /* sub r,%rsp */
