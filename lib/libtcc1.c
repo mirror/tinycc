@@ -680,10 +680,16 @@ void __va_start(__va_list_struct *ap, void *fp)
     ap->reg_save_area = (char *)fp - 176 - 16;
 }
 
+void *__va_arg16(__va_list_struct *ap,
+               enum __va_arg_type arg_type,
+               int size, int align);
+
 void *__va_arg(__va_list_struct *ap,
                enum __va_arg_type arg_type,
                int size, int align)
 {
+    if (size > 8 && arg_type == __va_float_reg)
+        return __va_arg16(ap, arg_type, size, align);
     size = (size + 7) & ~7;
     align = (align + 7) & ~7;
     switch (arg_type) {
@@ -715,6 +721,51 @@ void *__va_arg(__va_list_struct *ap,
         abort();
     }
 }
+
+/*
+ * Two things make long varargs arguments tricky:
+ *
+ * - XMM registers are 16 bytes, so there will be a gap in 8-byte +
+ *    8-byte structures passed in registers
+ *
+ * So we assemble such structures in a static (this breaks thread
+ * safety) buffer, which really should be part of the va_list_struct.
+ *
+ * - 16-byte structs are passed entirely in memory if only one
+ *   register they want to use is free.
+ *
+ * That means we need to skip %xmm7 in that case, but restore
+ * ->fp_offset to point to %xmm7 because a smaller argument yet to
+ * come might use it.
+ *
+ * And of course all of this needs fixing for integer and mixed
+ * structs as well...
+ */
+
+void *__va_arg16(__va_list_struct *ap,
+                 enum __va_arg_type arg_type,
+                 int size, int align)
+{
+    static struct { double x; double y; } buf;
+    void *p;
+    int ignore_xmm7 = 1;
+
+    /* XXX test f(fmt, sse0, ..., sse6, stack_12byte, sse7) */
+    if (ap->fp_offset != 128 + 48 - 16)
+        ignore_xmm7 = 0;
+    p = __va_arg(ap, arg_type, 8, align);
+    if (ap->fp_offset != 128 + 48)
+        ignore_xmm7 = 0;
+    if (ignore_xmm7)
+        p = __va_arg(ap, arg_type, 8, align);
+
+    buf.x = *(double *)p;
+    buf.y = *(double *)__va_arg(ap, arg_type, size - 8, align); /* XXX test 12-byte structs, structs with long doubles and floats */
+    if (ignore_xmm7)
+        ap->fp_offset = 128 + 48 - 16;
+    return &buf;
+}
+
 
 #endif /* __x86_64__ */
 
