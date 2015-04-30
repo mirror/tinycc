@@ -1633,9 +1633,9 @@ static X86_64_Mode classify_x86_64_arg(CType *ty, CType *ret, int *psize, int *p
 
             for(start=0; start < size; start += 8) {
                 if ((ty->t & VT_BTYPE) == VT_STRUCT) {
-                    mode = classify_x86_64_arg_eightbyte(ty, start);
+                    mode = classify_x86_64_merge(mode, classify_x86_64_arg_eightbyte(ty, start));
                 } else {
-                    mode = classify_x86_64_inner(ty, 0, 0, size);
+                    mode = classify_x86_64_merge(mode, classify_x86_64_inner(ty, 0, 0, size));
                 }
 
                 if (mode == x86_64_mode_integer) {
