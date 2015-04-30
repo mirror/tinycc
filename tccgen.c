@@ -4515,6 +4515,19 @@ ST_FUNC void unary(void)
                     vtop--;
                     vtop--;
                 }
+                for (i=0; i<REG_ARGS_MAX; i++) {
+                    offset = args.x87_reg[i];
+
+                    if (offset == -1)
+                        break;
+
+                    ret.type.t = VT_LDOUBLE;
+                    vset(&ret.type, VT_LOCAL | VT_LVAL, addr + offset);
+                    vsetc(&ret.type, TREG_ST0, &ret.c);
+                    vstore();
+                    vtop--;
+                    vtop--;
+                }
 #else
                 offset = 0;
                 for (;;) {
@@ -5177,6 +5190,23 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
                         vtop->type.t = VT_DOUBLE;
                         gv(r);
                         vpop();
+                    }
+                    for (i=0; i<REG_ARGS_MAX; i++) {
+                        int off = args.x87_reg[i];
+
+                        if (off == -1)
+                            break;
+
+                        /* We assume that when a structure is returned in multiple
+                           registers, their classes are consecutive values of the
+                           suite s(n) = 2^n */
+                        r = TREG_ST0 + i;
+
+                        vdup();
+                        vtop->c.i += off;
+                        vtop->type.t = VT_LDOUBLE;
+                        gv(r);
+                        vtop--;
                     }
 #else
                     if (is_float(ret_type.t))

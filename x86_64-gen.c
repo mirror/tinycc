@@ -41,6 +41,7 @@ typedef int RegArgs;
 typedef struct {
     int ireg[REG_ARGS_MAX];
     int freg[REG_ARGS_MAX];
+    int x87_reg[REG_ARGS_MAX];
 } RegArgs;
 #endif
 
@@ -1600,6 +1601,7 @@ static void regargs_init(RegArgs *args)
     for(i=0; i<REG_ARGS_MAX; i++) {
         args->ireg[i] = -1;
         args->freg[i] = -1;
+        args->x87_reg[i] = -1;
     }
 }
 
@@ -1607,7 +1609,7 @@ static X86_64_Mode classify_x86_64_arg(CType *ty, CType *ret, int *psize, int *p
 {
     X86_64_Mode mode = x86_64_mode_none;
     int size, align, ret_t = 0;
-    int ireg = 0, freg = 0;
+    int ireg = 0, freg = 0, x87_reg = 0;
 
     if (args)
         regargs_init(args);
@@ -1645,6 +1647,9 @@ static X86_64_Mode classify_x86_64_arg(CType *ty, CType *ret, int *psize, int *p
                         args->freg[freg++] = start;
                     ret_t = (size > 4) ? VT_DOUBLE : VT_FLOAT;
                 } else {
+                    if (args)
+                        args->x87_reg[x87_reg++] = start;
+                    start += 8;
                     ret_t = VT_LDOUBLE;
                 }
             }
@@ -1698,6 +1703,18 @@ static int regargs_fregs(RegArgs *args)
     return ret;
 }
 
+static int regargs_x87_regs(RegArgs *args)
+{
+    int i;
+    int ret = 0;
+    for(i=0; i<REG_ARGS_MAX; i++) {
+        if(args->x87_reg[i] != -1)
+            ret++;
+    }
+
+    return ret;
+}
+
 /* Count the total number of registers used by args */
 ST_FUNC int regargs_nregs(RegArgs *args)
 {
@@ -1708,6 +1725,9 @@ ST_FUNC int regargs_nregs(RegArgs *args)
             ret++;
 
         if(args->freg[i] != -1)
+            ret++;
+
+        if(args->x87_reg[i] != -1)
             ret++;
     }
 
@@ -1784,7 +1804,6 @@ static void align_struct(CType *type, int i)
    parameters and the function address. */
 void gfunc_call(int nb_args)
 {
-    X86_64_Mode mode;
     CType type;
     int r, args_size, stack_adjust, run_start, run_end, i;
     int nb_reg_args = 0;
@@ -1798,14 +1817,14 @@ void gfunc_call(int nb_args)
     /* calculate the number of integer/float register arguments */
     for(i = nb_args - 1; i >= 0; i--) {
         int fregs, iregs;
-        mode = classify_x86_64_arg(&vtop[-i].type, NULL, &size[i], &align[i], &reg_args[i]);
+        classify_x86_64_arg(&vtop[-i].type, NULL, &size[i], &align[i], &reg_args[i]);
         fregs = regargs_fregs(&reg_args[i]);
         iregs = regargs_iregs(&reg_args[i]);
 
         nb_sse_args += fregs;
         nb_reg_args += iregs;
 
-        if (sse_reg + fregs > 8 || gen_reg + iregs > REGN) {
+        if (sse_reg + fregs > 8 || gen_reg + iregs > REGN || regargs_x87_regs(&reg_args[i])) {
             regargs_init(&reg_args[i]);
         } else {
             sse_reg += fregs;
@@ -1928,8 +1947,6 @@ void gfunc_call(int nb_args)
                 g(0x00);
                 args_size += size[i];
             } else {
-                assert(mode == x86_64_mode_memory);
-
                 /* allocate the necessary size on stack */
                 o(0x48);
                 oad(0xec81, size[i]); /* sub $xxx, %rsp */
@@ -2178,6 +2195,7 @@ void gfunc_prolog(CType *func_type)
         mode = classify_x86_64_arg(type, NULL, &size, &align, &args);
         reg_count_integer = regargs_iregs(&args);
         reg_count_sse = regargs_fregs(&args);
+        /* ignore x87 arguments */
 
         switch (mode) {
         case x86_64_mode_integer:
