@@ -2009,6 +2009,7 @@ void gfunc_call(int nb_args)
                 vtop->type.t = VT_DOUBLE;
                 gv(RC_XMM0 << sse_reg);
                 vpop();
+                start_special_use(TREG_XMM0 + sse_reg);
             }
             for(k=REG_ARGS_MAX-1; k>=0; k--) {
                 int offset = reg_args[i].ireg[k];
@@ -2027,6 +2028,7 @@ void gfunc_call(int nb_args)
                 orex(64,d,r,0x89); /* mov */
                 o(0xc0 + REG_VALUE(r) * 8 + REG_VALUE(d));
                 vpop();
+                start_special_use(d);
             }
         } else {
             int size, align;
