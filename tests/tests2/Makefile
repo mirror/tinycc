@@ -98,7 +98,8 @@ TESTS =	\
  76_dollars_in_identifiers.test \
  77_push_pop_macro.test \
  78_vla_label.test \
- 79_vla_continue.test
+ 79_vla_continue.test \
+ 80_macros.test
 
 # 34_array_assignment.test -- array assignment is not in C standard
 
