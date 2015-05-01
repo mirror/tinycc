@@ -1574,8 +1574,19 @@ static X86_64_Mode classify_x86_64_inner(CType *ty, int offset, int start, int e
 
         mode = x86_64_mode_none;
         while ((f = f->next) != NULL) {
-            if (f->c + offset >= start && f->c + offset < end)
-                mode = classify_x86_64_merge(mode, classify_x86_64_inner(&f->type, f->c + offset, start, end));
+            if (f->c + offset >= end)
+                continue;
+
+            if (f->c + offset < start) {
+                int size, align;
+
+                size = type_size(&f->type, &align);
+
+                if (f->c + offset + size < start)
+                    continue;
+            }
+
+            mode = classify_x86_64_merge(mode, classify_x86_64_inner(&f->type, f->c + offset, start, end));
         }
         
         return mode;
@@ -1626,27 +1637,35 @@ static X86_64_Mode classify_x86_64_arg(CType *ty, CType *ret, int *psize, int *p
         *psize = (size + 7) & ~7;
         *palign = (align + 7) & ~7;
 
-        if (size > 16) {
+        ret_t = ty->t;
+
+        mode = classify_x86_64_inner(ty, 0, 0, size);
+
+        if (size > 16)
             mode = x86_64_mode_memory;
-        } else {
+
+        if (mode != x86_64_mode_memory &&
+            mode != x86_64_mode_none) {
             int start;
 
             for(start=0; start < size; start += 8) {
+                X86_64_Mode eightbyte_mode;
                 if ((ty->t & VT_BTYPE) == VT_STRUCT) {
-                    mode = classify_x86_64_merge(mode, classify_x86_64_arg_eightbyte(ty, start));
+                    eightbyte_mode = classify_x86_64_arg_eightbyte(ty,start);
+                    mode = classify_x86_64_merge(mode, eightbyte_mode);
                 } else {
-                    mode = classify_x86_64_merge(mode, classify_x86_64_inner(ty, 0, 0, size));
+                    eightbyte_mode = mode;
                 }
 
-                if (mode == x86_64_mode_integer) {
+                if (eightbyte_mode == x86_64_mode_integer) {
                     if (args)
                         args->ireg[ireg++] = start;
                     ret_t = (size > 4) ? VT_LLONG : VT_INT;
-                } else if (mode == x86_64_mode_sse) {
+                } else if (eightbyte_mode == x86_64_mode_sse) {
                     if (args)
                         args->freg[freg++] = start;
                     ret_t = (size > 4) ? VT_DOUBLE : VT_FLOAT;
-                } else {
+                } else if (eightbyte_mode == x86_64_mode_x87) {
                     if (args)
                         args->x87_reg[x87_reg++] = start;
                     start += 8;
@@ -1663,6 +1682,7 @@ static X86_64_Mode classify_x86_64_arg(CType *ty, CType *ret, int *psize, int *p
 
     return mode;
 }
+
 
 ST_FUNC int classify_x86_64_va_arg(CType *ty)
 {
@@ -1995,7 +2015,8 @@ void gfunc_call(int nb_args)
         }
 
         /* Alter stack entry type so that gv() knows how to treat it */
-        if ((vtop->type.t & VT_BTYPE) == VT_STRUCT) {
+        if ((vtop->type.t & VT_BTYPE) == VT_STRUCT ||
+            (vtop->type.t & VT_ARRAY)) {
             int k;
 
             for(k=REG_ARGS_MAX-1; k>=0; k--) {
