@@ -99,7 +99,9 @@ TESTS =	\
  77_push_pop_macro.test \
  78_vla_label.test \
  79_vla_continue.test \
- 81_arm64_int.test
+ 81_arm64_int.test \
+ 82_arm64_mixed.test \
+ 83_stdarg.test
 
 # 34_array_assignment.test -- array assignment is not in C standard
 

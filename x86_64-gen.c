@@ -2165,8 +2165,8 @@ void gfunc_prolog(CType *func_type)
                 seen_sse_num += regargs_fregs(&args);
                 seen_reg_num += regargs_iregs(&args);
 
-                if (seen_reg_num > 8) {
-                    seen_reg_num = 8;
+                if (seen_reg_num > REGN) {
+                    seen_reg_num = REGN;
                     stack = 1;
                 }
                 if (seen_sse_num > 8) {
