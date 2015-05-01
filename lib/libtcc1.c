@@ -652,7 +652,7 @@ extern void abort(void);
 #endif
 
 enum __va_arg_type {
-    __va_gen_reg, __va_float_reg, __va_stack
+    __va_gen_reg, __va_float_reg, __va_stack, __va_mixed_floatfirst, __va_mixed_intfirst,
 };
 
 //This should be in sync with the declaration on our include/stdarg.h
@@ -681,14 +681,14 @@ void __va_start(__va_list_struct *ap, void *fp)
 }
 
 void *__va_arg16(__va_list_struct *ap,
-               enum __va_arg_type arg_type,
-               int size, int align);
+                 enum __va_arg_type arg_type,
+                 int size, int align);
 
 void *__va_arg(__va_list_struct *ap,
                enum __va_arg_type arg_type,
                int size, int align)
 {
-    if (size > 8 && arg_type == __va_float_reg)
+    if (arg_type != __va_stack && size > 8)
         return __va_arg16(ap, arg_type, size, align);
     size = (size + 7) & ~7;
     align = (align + 7) & ~7;
@@ -749,20 +749,53 @@ void *__va_arg16(__va_list_struct *ap,
     static struct { double x; double y; } buf;
     void *p;
     int ignore_xmm7 = 1;
+    int ignore_r9 = 1;
+    enum __va_arg_type type1, type2;
 
-    /* XXX test f(fmt, sse0, ..., sse6, stack_12byte, sse7) */
-    if (ap->fp_offset != 128 + 48 - 16)
+    switch(arg_type) {
+    case __va_float_reg:
+        ignore_r9 = 0;
+        if (ap->fp_offset != 128 + 48 - 16)
+            ignore_xmm7 = 0;
+        type1 = type2 = __va_float_reg;
+        break;
+
+    case __va_gen_reg:
         ignore_xmm7 = 0;
-    p = __va_arg(ap, arg_type, 8, align);
+        if (ap->gp_offset != 40)
+            ignore_r9 = 0;
+        type1 = type2 = __va_gen_reg;
+        break;
+
+    case __va_mixed_floatfirst:
+        type1 = __va_float_reg;
+        type2 = __va_gen_reg;
+        ignore_xmm7 = 0;
+        ignore_r9 = 0;
+        break;
+
+    case __va_mixed_intfirst:
+        type1 = __va_gen_reg;
+        type2 = __va_float_reg;
+        ignore_xmm7 = 0;
+        ignore_r9 = 0;
+        break;
+    }
+
+    p = __va_arg(ap, type1, 8, align);
+    if (ap->gp_offset != 48)
+        ignore_r9 = 0;
     if (ap->fp_offset != 128 + 48)
         ignore_xmm7 = 0;
-    if (ignore_xmm7)
-        p = __va_arg(ap, arg_type, 8, align);
+    if (ignore_r9 || ignore_xmm7)
+        p = __va_arg(ap, type1, 8, align);
 
     buf.x = *(double *)p;
-    buf.y = *(double *)__va_arg(ap, arg_type, size - 8, align); /* XXX test 12-byte structs, structs with long doubles and floats */
+    buf.y = *(double *)__va_arg(ap, type2, size - 8, align); /* XXX test 12-byte structs, structs with long doubles and floats */
     if (ignore_xmm7)
         ap->fp_offset = 128 + 48 - 16;
+    if (ignore_r9)
+        ap->gp_offset = 40;
     return &buf;
 }
 

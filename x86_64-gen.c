@@ -1666,12 +1666,25 @@ static X86_64_Mode classify_x86_64_arg(CType *ty, CType *ret, int *psize, int *p
 
 ST_FUNC int classify_x86_64_va_arg(CType *ty)
 {
-    /* This definition must be synced with stdarg.h */
+    /* This definition must be synced with stdarg.h/libtcc1.c */
     enum __va_arg_type {
-        __va_gen_reg, __va_float_reg, __va_stack
+        __va_gen_reg, __va_float_reg, __va_stack, __va_mixed_floatfirst, __va_mixed_intfirst,
     };
     int size, align;
     X86_64_Mode mode = classify_x86_64_arg(ty, NULL, &size, &align, NULL);
+
+    if (size > 8 && size <= 16 && (ty->t & VT_BTYPE) == VT_STRUCT) {
+        X86_64_Mode mode1, mode2;
+        mode1 = classify_x86_64_arg_eightbyte(ty, 0);
+        mode2 = classify_x86_64_arg_eightbyte(ty, 8);
+
+        if (mode1 == x86_64_mode_integer && mode2 == x86_64_mode_sse)
+            return __va_mixed_intfirst;
+
+        if (mode1 == x86_64_mode_sse && mode2 == x86_64_mode_integer)
+            return __va_mixed_floatfirst;
+    }
+
     switch (mode) {
     default: return __va_stack;
     case x86_64_mode_integer: return __va_gen_reg;
