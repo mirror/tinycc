@@ -3092,6 +3092,11 @@ static void type_to_str(char *buf, int buf_size,
     char buf1[256];
     const char *tstr;
 
+    if (type->td) {
+        pstrcat(buf, buf_size, get_tok_str(type->td, NULL));
+        return;
+    }
+
     t = type->t;
     bt = t & VT_BTYPE;
     buf[0] = '\0';
@@ -3104,6 +3109,7 @@ static void type_to_str(char *buf, int buf_size,
         pstrcat(buf, buf_size, "typedef ");
     if (t & VT_INLINE)
         pstrcat(buf, buf_size, "inline ");
+
     if (bt != VT_PTR) {
         if (t & VT_VOLATILE)
             pstrcat(buf, buf_size, "volatile ");
