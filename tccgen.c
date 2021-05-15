@@ -958,6 +958,7 @@ ST_FUNC void tccgen_init(TCCState *s1)
     memset(vtop, 0, sizeof *vtop);
 
     /* define some often used types */
+    int_type.td = char_type.td = 0;
     int_type.t = VT_INT;
 
     char_type.t = VT_BYTE;
@@ -967,6 +968,7 @@ ST_FUNC void tccgen_init(TCCState *s1)
     mk_pointer(&char_pointer_type);
 
     func_old_type.t = VT_FUNC;
+    func_old_type.td = 0;
     func_old_type.ref = sym_push(SYM_FIELD, &int_type, 0, 0);
     func_old_type.ref->f.func_call = FUNC_CDECL;
     func_old_type.ref->f.func_type = FUNC_OLD;
@@ -1222,7 +1224,7 @@ ST_INLN void sym_free(Sym *sym)
 }
 
 /* push, without hashing */
-ST_FUNC Sym *sym_push2(Sym **ps, int v, int t, int c)
+ST_FUNC Sym *sym_push2(Sym **ps, int v, int t, int td, int c)
 {
     Sym *s;
 
@@ -1230,6 +1232,7 @@ ST_FUNC Sym *sym_push2(Sym **ps, int v, int t, int c)
     memset(s, 0, sizeof *s);
     s->v = v;
     s->type.t = t;
+    s->type.td = td;
     s->c = c;
     /* add in stack */
     s->prev = *ps;
@@ -1287,7 +1290,7 @@ ST_FUNC Sym *sym_push(int v, CType *type, int r, int c)
         ps = &local_stack;
     else
         ps = &global_stack;
-    s = sym_push2(ps, v, type->t, c);
+    s = sym_push2(ps, v, type->t, type->td, c);
     s->type.ref = type->ref;
     s->r = r;
     /* don't record fields or anonymous symbols */
@@ -1310,10 +1313,10 @@ ST_FUNC Sym *sym_push(int v, CType *type, int r, int c)
 }
 
 /* push a global identifier */
-ST_FUNC Sym *global_identifier_push(int v, int t, int c)
+ST_FUNC Sym *global_identifier_push(int v, int t, int td, int c)
 {
     Sym *s, **ps;
-    s = sym_push2(&global_stack, v, t, c);
+    s = sym_push2(&global_stack, v, t, td, c);
     s->r = VT_CONST | VT_SYM;
     /* don't record anonymous symbol */
     if (v < SYM_FIRST_ANOM) {
@@ -1431,6 +1434,7 @@ static void vpush64(int ty, unsigned long long v)
     CValue cval;
     CType ctype;
     ctype.t = ty;
+    ctype.td = 0;
     ctype.ref = NULL;
     cval.i = v;
     vsetc(&ctype, VT_CONST, &cval);
@@ -1465,6 +1469,7 @@ static void vseti(int r, int v)
 {
     CType type;
     type.t = VT_INT;
+    type.td = 0;
     type.ref = NULL;
     vset(&type, r, v);
 }
@@ -1644,7 +1649,7 @@ ST_FUNC Sym *external_global_sym(int v, CType *type)
     s = sym_find(v);
     if (!s) {
         /* push forward reference */
-        s = global_identifier_push(v, type->t | VT_EXTERN, 0);
+        s = global_identifier_push(v, type->t | VT_EXTERN, type->td, 0);
         s->type.ref = type->ref;
     } else if (IS_ASM_SYM(s)) {
         s->type.t = type->t | (s->type.t & VT_EXTERN);
@@ -1658,7 +1663,7 @@ ST_FUNC Sym *external_global_sym(int v, CType *type)
    This avoids type conflicts if the symbol is used from C too */
 ST_FUNC Sym *external_helper_sym(int v)
 {
-    CType ct = { VT_ASM_FUNC, NULL };
+    CType ct = { VT_ASM_FUNC, 0, NULL };
     return external_global_sym(v, &ct);
 }
 
@@ -1732,6 +1737,7 @@ static void patch_type(Sym *sym, CType *type)
     if (IS_ASM_SYM(sym)) {
         /* stay static if both are static */
         sym->type.t = type->t & (sym->type.t | ~VT_STATIC);
+        sym->type.td = type->td;
         sym->type.ref = type->ref;
     }
 
@@ -1761,6 +1767,7 @@ static void patch_type(Sym *sym, CType *type)
             struct FuncAttr f = sym->type.ref->f;
             /* put complete type, use static from prototype */
             sym->type.t = (type->t & ~(VT_STATIC|VT_INLINE)) | static_proto;
+            sym->type.td = type->td;
             sym->type.ref = type->ref;
             merge_funcattr(&sym->type.ref->f, &f);
         } else {
@@ -1839,7 +1846,7 @@ static Sym *external_sym(int v, CType *type, int r, AttributeDef *ad)
 
     if (!s) {
         /* push forward reference */
-        s = global_identifier_push(v, type->t, 0);
+        s = global_identifier_push(v, type->t, type->td, 0);
         s->r |= r;
         s->a = ad->a;
         s->asm_label = ad->asm_label;
@@ -2049,6 +2056,7 @@ static void move_reg(int r, int s, int t)
     if (r != s) {
         save_reg(r);
         sv.type.t = t;
+        sv.type.td = 0;
         sv.type.ref = NULL;
         sv.r = s;
         sv.c.i = 0;
@@ -2326,6 +2334,7 @@ ST_FUNC int gv(int rc)
         vtop->type.t &= ~VT_STRUCT_MASK;
 
         type.ref = NULL;
+        type.td = 0;
         type.t = vtop->type.t & VT_UNSIGNED;
         if ((vtop->type.t & VT_BTYPE) == VT_BOOL)
             type.t |= VT_UNSIGNED;
@@ -3336,6 +3345,7 @@ static int combine_types(CType *dest, SValue *op1, SValue *op2, int op)
     int ret = 1;
 
     type.t = VT_VOID;
+    type.td = 0;
     type.ref = NULL;
 
     if (bt1 == VT_VOID || bt2 == VT_VOID) {
@@ -3666,6 +3676,7 @@ static void gen_cast_s(int t)
 {
     CType type;
     type.t = t;
+    type.td = 0;
     type.ref = NULL;
     gen_cast(&type);
 }
@@ -3991,6 +4002,7 @@ ST_FUNC void mk_pointer(CType *type)
     Sym *s;
     s = sym_push(SYM_FIELD, type, 0, -1);
     type->t = VT_PTR | (type->t & VT_STORAGE);
+    type->td = 0;
     type->ref = s;
 }
 
@@ -4744,7 +4756,7 @@ static void struct_layout(CType *type, AttributeDef *ad)
     /* check whether we can access bitfields by their type */
     for (f = type->ref->next; f; f = f->next) {
         int s, px, cx, c0;
-        CType t;
+        CType t = {0};
 
         if (0 == (f->type.t & VT_BITFIELD))
             continue;
@@ -4846,12 +4858,14 @@ static void struct_decl(CType *type, int u)
     }
     /* Record the original enum/struct/union token.  */
     type1.t = u == VT_ENUM ? u | VT_INT | VT_UNSIGNED : u;
+    type1.td = 0;
     type1.ref = NULL;
     /* we put an undefined size for struct/union */
     s = sym_push(v | SYM_STRUCT, &type1, 0, -1);
     s->r = 0; /* default alignment is zero as gcc */
 do_decl:
     type->t = s->type.t;
+    type->td = 0;
     type->ref = s;
 
     if (tok == '{') {
@@ -4865,6 +4879,7 @@ do_decl:
         if (u == VT_ENUM) {
             long long ll = 0, pl = 0, nl = 0;
 	    CType t;
+            t.td = 0;
             t.ref = s;
             /* enum symbols have static storage */
             t.t = VT_INT|VT_STATIC|VT_ENUM_VAL;
@@ -5066,6 +5081,7 @@ static int parse_btype(CType *type, AttributeDef *ad)
     typespec_found = 0;
     t = VT_INT;
     bt = st = -1;
+    type->td = 0;
     type->ref = NULL;
 
     while(1) {
@@ -5288,6 +5304,7 @@ static int parse_btype(CType *type, AttributeDef *ad)
             t &= ~(VT_BTYPE|VT_LONG);
             u = t & ~(VT_CONSTANT | VT_VOLATILE), t ^= u;
             type->t = (s->type.t & ~VT_TYPEDEF) | u;
+            type->td = n;
             type->ref = s->type.ref;
             if (t)
                 parse_btype_qualify(type, t);
@@ -5392,6 +5409,7 @@ static int post_type(CType *type, AttributeDef *ad, int storage, int td)
                     if (n < TOK_UIDENT)
                         expect("identifier");
                     pt.t = VT_VOID; /* invalid type */
+                    pt.td = 0;
                     pt.ref = NULL;
                     next();
                 }
@@ -5434,6 +5452,7 @@ static int post_type(CType *type, AttributeDef *ad, int storage, int td)
         s->f = ad->f;
         s->next = first;
         type->t = VT_FUNC;
+        type->td = 0;
         type->ref = s;
     } else if (tok == '[') {
 	int saved_nocode_wanted = nocode_wanted;
@@ -5513,6 +5532,7 @@ static int post_type(CType *type, AttributeDef *ad, int storage, int td)
            element type */
         s = sym_push(SYM_FIELD, type, 0, n);
         type->t = (t1 ? VT_VLA : VT_ARRAY) | VT_PTR;
+        type->td = 0;
         type->ref = s;
     }
     return 1;
@@ -5636,6 +5656,7 @@ static void gfunc_param_typed(Sym *func, Sym *arg)
             gen_cast_s(VT_DOUBLE);
         } else if (vtop->type.t & VT_BITFIELD) {
             type.t = vtop->type.t & (VT_BTYPE | VT_UNSIGNED);
+            type.td = vtop->type.td;
 	    type.ref = vtop->type.ref;
             gen_cast(&type);
         } else if (vtop->r & VT_MUSTCAST) {
@@ -5705,8 +5726,8 @@ static void parse_builtin_params(int nc, const char *args)
 	    continue;
         }
         expr_eq();
+        type.t = type.td = 0;
         type.ref = NULL;
-        type.t = 0;
 	switch (c) {
 	    case 'e':
 		continue;
@@ -5857,6 +5878,7 @@ ST_FUNC void unary(void)
 
     sizeof_caller = in_sizeof;
     in_sizeof = 0;
+    type.td = 0;
     type.ref = NULL;
     /* XXX: GCC 2.95.3 does not generate a table although it should be
        better here */
@@ -7606,9 +7628,9 @@ again:
 	    if (s->r & LABEL_FORWARD) {
 		/* start new goto chain for cleanups, linked via label->next */
 		if (cur_scope->cl.s && !nocode_wanted) {
-                    sym_push2(&pending_gotos, SYM_FIELD, 0, cur_scope->cl.n);
+                    sym_push2(&pending_gotos, SYM_FIELD, 0, 0, cur_scope->cl.n);
                     pending_gotos->prev_tok = s;
-                    s = sym_push2(&s->next, SYM_FIELD, 0, 0);
+                    s = sym_push2(&s->next, SYM_FIELD, 0, 0, 0);
                     pending_gotos->next = s;
                 }
 		s->jnext = gjmp(s->jnext);
@@ -7922,7 +7944,7 @@ static int decl_designator(init_params *p, CType *type, unsigned long c,
 
     if (!(flags & DIF_SIZE_ONLY) && nb_elems > 1) {
         Sym aref = {0};
-        CType t1;
+        CType t1 = {0};
         int i;
         if (p->sec || (type->t & VT_ARRAY)) {
             /* make init_putv/vstore believe it were a struct */
@@ -8469,7 +8491,7 @@ static void decl_initializer_alloc(CType *type, AttributeDef *ad, int r,
             sym = sym_push(v, type, r, addr);
 	    if (ad->cleanup_func) {
 		Sym *cls = sym_push2(&all_cleanups,
-                    SYM_FIELD | ++cur_scope->cl.n, 0, 0);
+                    SYM_FIELD | ++cur_scope->cl.n, 0, 0, 0);
 		cls->prev_tok = sym;
 		cls->next = ad->cleanup_func;
 		cls->ncl = cur_scope->cl.s;
@@ -8632,7 +8654,7 @@ static void gen_function(Sym *sym)
     /* put debug symbol */
     tcc_debug_funcstart(tcc_state, sym);
     /* push a dummy symbol to enable local sym storage */
-    sym_push2(&local_stack, SYM_FIELD, 0, 0);
+    sym_push2(&local_stack, SYM_FIELD, 0, 0, 0);
     local_scope = 1; /* for function parameters */
     gfunc_prolog(sym);
     local_scope = 0;
@@ -8656,6 +8678,7 @@ static void gen_function(Sym *sym)
     cur_text_section = NULL;
     funcname = ""; /* for safety */
     func_vt.t = VT_VOID; /* for safety */
+    func_vt.td = 0; /* for unsafety */
     func_var = 0; /* for safety */
     ind = 0; /* for safety */
     nocode_wanted = 0x80000000;

@@ -1364,7 +1364,7 @@ ST_INLN void define_push(int v, int macro_type, int *str, Sym *first_arg)
     Sym *s, *o;
 
     o = define_find(v);
-    s = sym_push2(&define_stack, v, macro_type, 0);
+    s = sym_push2(&define_stack, v, macro_type, 0, 0);
     s->d = str;
     s->next = first_arg;
     table_ident[v - TOK_IDENT]->sym_define = s;
@@ -1413,7 +1413,7 @@ ST_FUNC Sym *label_find(int v)
 ST_FUNC Sym *label_push(Sym **ptop, int v, int flags)
 {
     Sym *s, **ps;
-    s = sym_push2(ptop, v, 0, 0);
+    s = sym_push2(ptop, v, 0, 0, 0);
     s->r = flags;
     ps = &table_ident[v - TOK_IDENT]->sym_label;
     if (ptop == &global_label_stack) {
@@ -1575,7 +1575,7 @@ ST_FUNC void parse_define(void)
             if (varg < TOK_IDENT)
         bad_list:
                 tcc_error("bad macro parameter list");
-            s = sym_push2(&define_stack, varg | SYM_FIELD, is_vaargs, 0);
+            s = sym_push2(&define_stack, varg | SYM_FIELD, is_vaargs, 0, 0);
             *ps = s;
             ps = &s->next;
             if (tok == ')')
@@ -3140,7 +3140,7 @@ static int *macro_arg_subst(Sym **nested_list, const int *macro_str, Sym *args)
 			   used multiple times, but not if the argument
 			   contains the __COUNTER__ macro.  */
 			TokenString str2;
-			sym_push2(&s->next, s->v, s->type.t, 0);
+			sym_push2(&s->next, s->v, s->type.t, s->type.td, 0);
 			tok_str_new(&str2);
 			macro_subst(&str2, nested_list, st);
 			tok_str_add(&str2, 0);
@@ -3456,7 +3456,7 @@ static int macro_subst_tok(
                 str.len -= spc;
                 tok_str_add(&str, -1);
                 tok_str_add(&str, 0);
-                sa1 = sym_push2(&args, sa->v & ~SYM_FIELD, sa->type.t, 0);
+                sa1 = sym_push2(&args, sa->v & ~SYM_FIELD, sa->type.t, sa->type.td, 0);
                 sa1->d = str.str;
                 sa = sa->next;
                 if (tok == ')') {
@@ -3491,7 +3491,7 @@ static int macro_subst_tok(
             parse_flags = saved_parse_flags;
         }
 
-        sym_push2(nested_list, s->v, 0, 0);
+        sym_push2(nested_list, s->v, 0, 0, 0);
         parse_flags = saved_parse_flags;
         joined_str = macro_twosharps(mstr);
         macro_subst(tok_str, nested_list, joined_str ? joined_str : mstr);

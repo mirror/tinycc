@@ -78,7 +78,7 @@ static Sym *asm_label_push(int v)
     /* We always add VT_EXTERN, for sym definition that's tentative
        (for .set, removed for real defs), for mere references it's correct
        as is.  */
-    Sym *sym = global_identifier_push(v2, VT_ASM | VT_EXTERN | VT_STATIC, 0);
+    Sym *sym = global_identifier_push(v2, VT_ASM | VT_EXTERN | VT_STATIC, 0, 0);
     if (addeddot)
         sym->asm_label = v;
     return sym;

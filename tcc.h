@@ -480,7 +480,7 @@ typedef struct CString {
 
 /* type definition */
 typedef struct CType {
-    int t;
+    int t, td; /* td: token used for typedef, if applicable */
     struct Sym *ref;
 } CType;
 
@@ -1485,12 +1485,12 @@ ST_FUNC void greloca(Section *s, Sym *sym, unsigned long offset, int type, addr_
 ST_INLN void sym_free(Sym *sym);
 ST_FUNC Sym *sym_push(int v, CType *type, int r, int c);
 ST_FUNC void sym_pop(Sym **ptop, Sym *b, int keep);
-ST_FUNC Sym *sym_push2(Sym **ps, int v, int t, int c);
+ST_FUNC Sym *sym_push2(Sym **ps, int v, int t, int td, int c);
 ST_FUNC Sym *sym_find2(Sym *s, int v);
 ST_INLN Sym *sym_find(int v);
 ST_INLN Sym *struct_find(int v);
 
-ST_FUNC Sym *global_identifier_push(int v, int t, int c);
+ST_FUNC Sym *global_identifier_push(int v, int t, int td, int c);
 ST_FUNC Sym *external_global_sym(int v, CType *type);
 ST_FUNC Sym *external_helper_sym(int v);
 ST_FUNC void vpush_helper_func(int v);
