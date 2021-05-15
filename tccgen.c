@@ -259,6 +259,7 @@ static void gv_dup(void);
 static int get_temp_local_var(int size,int align);
 static void clear_temp_local_var_list();
 static void cast_error(CType *st, CType *dt);
+static Sym *find_anon_field(CType *structure, CType *field, int *cumofs);
 
 ST_INLN int is_float(int t)
 {
@@ -4068,8 +4069,7 @@ static void verify_assign_cast(CType *dt)
         if (is_compatible_types(type1, type2))
             break;
         for (qualwarn = lvl = 0;; ++lvl) {
-            if (((type2->t & VT_CONSTANT) && !(type1->t & VT_CONSTANT)) ||
-                ((type2->t & VT_VOLATILE) && !(type1->t & VT_VOLATILE)))
+            if ((type2->t & (VT_CONSTANT|VT_VOLATILE)) & ~(type1->t & (VT_CONSTANT|VT_VOLATILE)))
                 qualwarn = 1;
             dbt = type1->t & (VT_BTYPE|VT_LONG);
             sbt = type2->t & (VT_BTYPE|VT_LONG);
@@ -4090,11 +4090,32 @@ static void verify_assign_cast(CType *dt)
 		   base types, though, in particular for unsigned enums
 		   and signed int targets.  */
             } else {
+                Sym *s;
+                int cumofs = 0;
+                if (tcc_state->plan9_extensions
+                    && dbt == VT_STRUCT && sbt == VT_STRUCT
+                    && (s = find_anon_field(type2, type1, &cumofs))) {
+                    /* duplicating code from the '.' operator */
+                    vtop->type = char_pointer_type;
+                    vpushi(cumofs + s->c);
+                    gen_op('+');
+                    vtop->type = s->type;
+                    mk_pointer(&vtop->type);
+
+                    /* generate a warning for, e.g.:
+                     * typedef struct {} Inner; struct { const Inner; } outer; Inner *i = &outer;
+                     */
+                    if ((s->type.t & (VT_CONSTANT|VT_VOLATILE)) & ~(type1->t & (VT_CONSTANT|VT_VOLATILE)))
+                        goto qualwarn;
+                    break;
+                }
+
                 tcc_warning("assignment from incompatible pointer type");
                 break;
             }
         }
         if (qualwarn)
+qualwarn:
             tcc_warning("assignment discards qualifiers from pointer target type");
         break;
     case VT_BYTE:
@@ -4571,6 +4592,30 @@ static Sym * find_field (CType *type, int v, int *cumofs)
 	  break;
     }
     return s;
+}
+
+static Sym *find_anon_field(CType *structure, CType *field, int *cumofs)
+{
+    Sym *s = structure->ref;
+    while ((s = s->next) != NULL) {
+        if ((s->v & SYM_FIELD) &&
+            (s->type.t & VT_BTYPE) == VT_STRUCT &&
+            (s->v & ~SYM_FIELD) >= SYM_FIRST_ANOM) {
+            Sym *ret;
+
+            if (compare_types(&s->type, field, 1)) {
+                return s;
+            }
+
+            ret = find_anon_field(&s->type, field, cumofs);
+            if (ret) {
+                *cumofs += s->c;
+                return ret;
+            }
+        }
+    }
+
+    return NULL;
 }
 
 static void check_fields (CType *type, int check)
