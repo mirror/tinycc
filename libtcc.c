@@ -788,6 +788,7 @@ LIBTCCAPI TCCState *tcc_new(void)
     s->cversion = 199901; /* default unless -std=c11 is supplied */
     s->warn_implicit_function_declaration = 1;
     s->ms_extensions = 1;
+    s->plan9_extensions = 1;
 
 #ifdef CHAR_IS_UNSIGNED
     s->char_is_unsigned = 1;
@@ -1594,6 +1595,7 @@ static const FlagDef options_f[] = {
     { offsetof(TCCState, nocommon), FD_INVERT, "common" },
     { offsetof(TCCState, leading_underscore), 0, "leading-underscore" },
     { offsetof(TCCState, ms_extensions), 0, "ms-extensions" },
+    { offsetof(TCCState, plan9_extensions), 0, "plan9-extensions" },
     { offsetof(TCCState, dollars_in_identifiers), 0, "dollars-in-identifiers" },
     { offsetof(TCCState, test_coverage), 0, "test-coverage" },
     { 0, 0, NULL }

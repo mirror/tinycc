@@ -591,7 +591,7 @@ typedef struct Section {
     struct Section *reloc;   /* corresponding section for relocation, if any */
     struct Section *hash;    /* hash table for symbols */
     struct Section *prev;    /* previous section on section stack */
-    char name[1];           /* section name */
+    char name[1];            /* section name */
 } Section;
 
 typedef struct DLLReference {
@@ -760,6 +760,10 @@ struct TCCState {
     unsigned char char_is_unsigned;
     unsigned char leading_underscore;
     unsigned char ms_extensions; /* allow nested named struct w/o identifier behave like unnamed */
+    unsigned char plan9_extensions; /* allow referring to unnamed nexted struct by its typedef name (if
+                                       present); and, convert a pointer to a structure to a pointer to
+                                       its unnamed field (if present) */
+
     unsigned char dollars_in_identifiers;  /* allows '$' char in identifiers */
     unsigned char ms_bitfields; /* if true, emulate MS algorithm for aligning bitfields */
 

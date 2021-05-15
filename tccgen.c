@@ -3093,7 +3093,7 @@ static void type_to_str(char *buf, int buf_size,
     const char *tstr;
 
     if (type->td) {
-        pstrcat(buf, buf_size, get_tok_str(type->td, NULL));
+        pstrcpy(buf, buf_size, get_tok_str(type->td, NULL));
         return;
     }
 
@@ -4551,18 +4551,23 @@ redo:
 static Sym * find_field (CType *type, int v, int *cumofs)
 {
     Sym *s = type->ref;
-    v |= SYM_FIELD;
+    int fv = v | SYM_FIELD;
     while ((s = s->next) != NULL) {
 	if ((s->v & SYM_FIELD) &&
 	    (s->type.t & VT_BTYPE) == VT_STRUCT &&
 	    (s->v & ~SYM_FIELD) >= SYM_FIRST_ANOM) {
-	    Sym *ret = find_field (&s->type, v, cumofs);
+	    Sym *ret;
+
+            if (tcc_state->plan9_extensions && s->type.td == v)
+                break;
+
+            ret = find_field (&s->type, fv, cumofs);
 	    if (ret) {
                 *cumofs += s->c;
 	        return ret;
             }
 	}
-	if (s->v == v)
+	if (s->v == fv)
 	  break;
     }
     return s;
@@ -4574,13 +4579,22 @@ static void check_fields (CType *type, int check)
 
     while ((s = s->next) != NULL) {
         int v = s->v & ~SYM_FIELD;
-        if (v < SYM_FIRST_ANOM) {
-            TokenSym *ts = table_ident[v - TOK_IDENT];
-            if (check && (ts->tok & SYM_FIELD))
-                tcc_error("duplicate member '%s'", get_tok_str(v, NULL));
-            ts->tok ^= SYM_FIELD;
-        } else if ((s->type.t & VT_BTYPE) == VT_STRUCT)
+        TokenSym *ts;
+        if ((s->type.t & VT_BTYPE) == VT_STRUCT &&
+            v >= SYM_FIRST_ANOM) {
             check_fields (&s->type, check);
+            v = s->type.td & ~SYM_FIELD;
+            if (!(tcc_state->plan9_extensions && s->type.td
+                  && TOK_IDENT < v))
+                continue;
+        }
+        if (v > SYM_FIRST_ANOM)
+            continue;
+
+        ts = table_ident[v - TOK_IDENT];
+        if (check && (ts->tok & SYM_FIELD))
+            tcc_error("duplicate member '%s'", get_tok_str(v, NULL));
+        ts->tok ^= SYM_FIELD;
     }
 }
 
@@ -4965,7 +4979,7 @@ do_decl:
                     	    else {
 				int v = btype.ref->v;
 				if (!(v & SYM_FIELD) && (v & ~SYM_STRUCT) < SYM_FIRST_ANOM) {
-				    if (tcc_state->ms_extensions == 0)
+				    if (!tcc_state->ms_extensions && !tcc_state->plan9_extensions)
                         		expect("identifier");
 				}
                     	    }
