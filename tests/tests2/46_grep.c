@@ -14,6 +14,9 @@
  * included and reference made to  the  fact  that  reproduction
  * privileges were granted by DECUS.
  */
+#if defined(__FreeBSD__)
+#include <sys/cdefs.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>	// tolower()
